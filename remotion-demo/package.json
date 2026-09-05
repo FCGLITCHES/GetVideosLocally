@@ -1,0 +1,20 @@
+{
+  "name": "getvideoslocally-demo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "studio": "remotion studio",
+    "preview": "remotion preview",
+    "render": "remotion render ProductDemo out/getvideoslocally-demo.mp4 && node ../scripts/collate-demo-video.js out/getvideoslocally-demo.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.369",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.369"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.8.0"
+  }
+}

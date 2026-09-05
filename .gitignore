@@ -11,6 +11,8 @@ data/download-state.json
 .icon-inspect/
 .playwright-cli/
 output/
+demo-videos/*
+!demo-videos/README.md
 ZIPs/
 GetVideosLocally Setup *.exe
 GetVideosLocally-Portable*.zip
@@ -21,3 +23,7 @@ GetVideosLocally-Portable*.zip
 backend/data/.server-token
 SimplyYTD-Portable.zip
 Youtube-feed-customizer_v2.2.zip
+
+# Local runtime logs and reproducible demo renders
+data/app.log
+remotion*/out/

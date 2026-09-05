@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "studio": "remotion studio src/index.ts --public-dir ../public",
-    "render": "remotion render src/index.ts GetVideosLocallyDemo out/GetVideosLocallyDemo.mp4 --public-dir ../public --codec h264 --crf 18",
+    "render": "remotion render src/index.ts GetVideosLocallyDemo out/GetVideosLocallyDemo.mp4 --public-dir ../public --codec h264 --crf 18 && node ../scripts/collate-demo-video.js out/GetVideosLocallyDemo.mp4",
     "still": "remotion still src/index.ts GetVideosLocallyDemo out/preview.png --public-dir ../public --frame 420"
   },
   "dependencies": {

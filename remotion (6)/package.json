@@ -1,0 +1,20 @@
+{
+  "name": "getvideoslocally-product-demo-6",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "studio": "remotion studio src/index.ts --public-dir ../remotion-demo/public",
+    "render": "remotion render src/index.ts GetVideosLocallyDemo6 out/GetVideosLocallyDemo6.mp4 --public-dir ../remotion-demo/public --codec h264 --crf 18 && node ../scripts/collate-demo-video.js out/GetVideosLocallyDemo6.mp4",
+    "still": "remotion still src/index.ts GetVideosLocallyDemo6 out/preview.png --public-dir ../remotion-demo/public --frame 600"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.369",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.369"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.8.0"
+  }
+}

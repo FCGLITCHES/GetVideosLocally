@@ -17,7 +17,8 @@
     "build:linux": "electron-builder --linux -c electron-builder.json",
     "icon:generate": "node generate-icon.js",
     "icon:verify": "node check-icon-format.js",
-    "icon:verify-exe": "node verify-icon.js"
+    "icon:verify-exe": "node verify-icon.js",
+    "demo-videos:sync": "node scripts/sync-demo-videos.js"
   },
   "keywords": [
     "getvideoslocally",

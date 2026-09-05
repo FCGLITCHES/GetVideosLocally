@@ -10,12 +10,7 @@ const fontCss=`@font-face{font-family:ManropeLocal;src:url('${staticFile('manrop
 type Cam={cx:number;cy:number;zoom:number};
 const camPos=(c:Cam)=>({left:W/2-c.cx*c.zoom,top:H/2-c.cy*c.zoom});
 const map=(x:number,y:number,c:Cam)=>{const p=camPos(c);return{x:p.left+x*c.zoom,y:p.top+y*c.zoom}};
-const Shell:React.FC<{children:React.ReactNode;background?:string;color?:string}>=({children,background=PAPER,color=INK})=><AbsoluteFill style={{
-  background,
-  color,
-  fontFamily:'ManropeLocal, Segoe UI, sans-serif',
-  overflow:'hidden'
-}}><style>{fontCss}</style>{children}</AbsoluteFill>;
+const Shell:React.FC<{children:React.ReactNode;background?:string;color?:string}>=({children,background=PAPER,color=INK})=><AbsoluteFill style={{background,color,fontFamily:'ManropeLocal, Segoe UI, sans-serif',overflow:'hidden'}}><style>{fontCss}</style>{children}</AbsoluteFill>;
 const Source:React.FC<{src:'Pic1.png'|'Pic2.png'|'Pic3.png'|'Pic4.png';camera:Cam;opacity?:number}>=({src,camera,opacity=1})=>{const p=camPos(camera);return <div style={{position:'absolute',left:p.left,top:p.top,width:SW,height:SH,scale:camera.zoom,transformOrigin:'0 0',opacity}}><Img src={staticFile(src)} style={{width:SW,height:SH,display:'block'}}/></div>};
 const Cursor:React.FC<{x:number;y:number;down?:number}>=({x,y,down=0})=><div style={{position:'absolute',left:x,top:y,width:34,height:46,scale:1-down*.1,transformOrigin:'3px 3px',filter:'drop-shadow(0 5px 7px #0005)'}}><svg viewBox="0 0 28 38"><path d="M2 2l22 21-11 1 6 11-5 2-6-11-7 8z" fill="white" stroke="#111" strokeWidth="2"/></svg></div>;
 const Ring:React.FC<{x:number;y:number;w:number;h:number;camera:Cam;opacity?:number}>=({x,y,w,h,camera,opacity=1})=>{const p=map(x,y,camera);return <div style={{position:'absolute',left:p.x,top:p.y,width:w*camera.zoom,height:h*camera.zoom,border:`2px solid ${RED}`,borderRadius:12,boxSizing:'border-box',boxShadow:'0 0 0 6px rgba(201,21,45,.08)',opacity}}/>};
@@ -31,7 +26,7 @@ const S4=()=>{const f=useCurrentFrame();const camera={cx:286,cy:714,zoom:2.08};c
 
 const S5=()=>{const f=useCurrentFrame();const reveal=interpolate(f,[0,18],[0,1],clamp);const t=interpolate(f,[18,145],[0,1],{...clamp,easing:ease});const camera={cx:interpolate(t,[0,1],[643,925]),cy:interpolate(t,[0,1],[486,392]),zoom:interpolate(t,[0,1],[1.1,1.62])};return <Shell background={RED}><Source src="Pic1.png" camera={camera} opacity={reveal}/><Editorial kicker="04  PROGRESS" title="See the download happen." body="The real captured progress row becomes the entire point of the frame."/><Ring x={615} y={323} w={624} h={175} camera={camera} opacity={interpolate(f,[48,70],[0,1],clamp)}/></Shell>};
 
-const S6=()=>{const f=useCurrentFrame();const items=['MP4 · up to 8K','MKV · WEBM · MOV','MP3 · WAV · FLAC','M4A · OPUS','1000+ supported sites'];return <Shell background="#fff"><div style={{display:'flex',height:'100%',alignItems:'center',padding:'0 185px',gap:130}}><div style={{width:800}}><div style={{fontSize:19,fontWeight:800,letterSpacing:2.8,color:RED}}>FLEXIBLE BY DESIGN</div><div style={{fontSize:70,fontWeight:800,letterSpacing:-3.5,lineHeight:1.03,marginTop:18}}>Your format.<br/>Your quality.</div><div style={{fontSize:23,color:'#666',lineHeight:1.5,marginTop:24}}>An editorial capability beat — deliberately not presented as application UI.</div></div><div style={{height:510,width:600,overflow:'hidden',maskImage:'linear-gradient(transparent,black 18%,black 82%,transparent)'}}><div style={{translate:`0 ${80-(f*2.05)%490}px`}}>{[...items,...items,...items].map((x,i)=><div key={i} style={{height:94,display:'flex',alignItems:'center',fontSize:29,fontWeight:750,borderBottom:'1px solid #ddd'}}><span style={{width:11,height:11,borderRadius:99,background:RED,marginRight:22}}/>{x}</div>)}</div></div></div></Shell>};
+const S6=()=>{const f=useCurrentFrame();const items=['MP4 · up to 8K','MKV · WEBM · MOV','MP3 · WAV · FLAC','M4A · OPUS','1000+ supported sites'];return <Shell background="#fff"><div style={{display:'flex',height:'100%',alignItems:'center',padding:'0 185px',gap:130}}><div style={{width:800}}><div style={{fontSize:19,fontWeight:800,letterSpacing:2.8,color:RED}}>FLEXIBLE BY DESIGN</div><div style={{fontSize:70,fontWeight:800,letterSpacing:-3.5,lineHeight:1.03,marginTop:18}}>Your format.<br/>Your quality.</div><div style={{fontSize:23,color:'#666',lineHeight:1.5,marginTop:24}}>A focused capability beat between authentic interface actions.</div></div><div style={{height:510,width:600,overflow:'hidden',maskImage:'linear-gradient(transparent,black 18%,black 82%,transparent)'}}><div style={{translate:`0 ${80-(f*2.05)%490}px`}}>{[...items,...items,...items].map((x,i)=><div key={i} style={{height:94,display:'flex',alignItems:'center',fontSize:29,fontWeight:750,borderBottom:'1px solid #ddd'}}><span style={{width:11,height:11,borderRadius:99,background:RED,marginRight:22}}/>{x}</div>)}</div></div></div></Shell>};
 
 const S7=()=>{const f=useCurrentFrame();const t=interpolate(f,[0,130],[0,1],{...clamp,easing:ease});const camera={cx:interpolate(t,[0,1],[643,350]),cy:interpolate(t,[0,1],[500,410]),zoom:interpolate(t,[0,1],[1.08,1.72])};const a=map(1080,700,camera),b=map(382,427,camera);const m=interpolate(f,[58,112],[0,1],{...clamp,easing:ease});return <Shell background="#0d1838"><Source src="Pic3.png" camera={camera}/><Editorial kicker="05  HISTORY" title="Your files stay actionable." body="The camera reframes a real history card and approaches its real folder control." side="right" dark/><Ring x={12} y={358} w={402} h={185} camera={camera} opacity={interpolate(f,[75,98],[0,1],clamp)}/><Cursor x={interpolate(m,[0,1],[a.x,b.x])} y={interpolate(m,[0,1],[a.y,b.y])}/></Shell>};
 
@@ -39,4 +34,14 @@ const S8=()=>{const f=useCurrentFrame();const cards=[['8K','quality support',145
 
 const S9=()=>{const f=useCurrentFrame();const s=spring({frame:f-4,fps:30,config:{damping:24,stiffness:78}});return <Shell background="#090909" color="#fff"><div style={{margin:'auto',textAlign:'center',opacity:s,scale:.97+s*.03}}><Img src={staticFile('Logo.png')} style={{width:148,height:148,objectFit:'contain'}}/><div style={{fontSize:60,fontWeight:800,letterSpacing:-2.8,marginTop:24}}>GetVideosLocally</div><div style={{fontSize:25,color:'#aaa',marginTop:10}}>Free. Local. Up to 8K.</div></div></Shell>};
 
-export const ProductDemo:React.FC=()=> <AbsoluteFill><Sequence from={0} durationInFrames={105}><S1/></Sequence><Sequence from={105} durationInFrames={165}><S2/></Sequence><Sequence from={270} durationInFrames={135}><S3/></Sequence><Sequence from={405} durationInFrames={120}><S4/></Sequence><Sequence from={525} durationInFrames={180}><S5/></Sequence><Sequence from={705} durationInFrames={165}><S6/></Sequence><Sequence from={870} durationInFrames={180}><S7/></Sequence><Sequence from={1050} durationInFrames={180}><S8/></Sequence><Sequence from={1230} durationInFrames={120}><S9/></Sequence></AbsoluteFill>;
+export const ProductDemo:React.FC=()=> <AbsoluteFill>
+  <Sequence from={0} durationInFrames={105}><S1/></Sequence>
+  <Sequence from={105} durationInFrames={165}><S2/></Sequence>
+  <Sequence from={270} durationInFrames={135}><S3/></Sequence>
+  <Sequence from={405} durationInFrames={120}><S4/></Sequence>
+  <Sequence from={525} durationInFrames={180}><S5/></Sequence>
+  <Sequence from={705} durationInFrames={165}><S6/></Sequence>
+  <Sequence from={870} durationInFrames={180}><S7/></Sequence>
+  <Sequence from={1050} durationInFrames={180}><S8/></Sequence>
+  <Sequence from={1230} durationInFrames={120}><S9/></Sequence>
+</AbsoluteFill>;
