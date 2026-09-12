@@ -33,7 +33,7 @@ export const copy = {
   benefit: "Keep 8K locally, faster",
   productName: "GetVideosLocally",
   ctaButton: "Download Free",
-  siteUrl: "github.com/FCGLITCHES/simple-yt-downloader",
+  siteUrl: "github.com/FCGLITCHES/GetVideosLocally",
   promise: "1000+ sites  ·  up to 8K  ·  yours, locally",
 } as const;
 
