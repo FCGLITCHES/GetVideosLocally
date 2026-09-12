@@ -62,7 +62,7 @@
 
             <div class="options-grid" style="grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
                 <!-- GitHub -->
-                <a href="https://github.com/FCGLITCHES/simple-yt-downloader" target="_blank" class="feature-item"
+                <a href="https://github.com/FCGLITCHES/GetVideosLocally" target="_blank" class="feature-item"
                     style="text-decoration: none; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1rem; padding: 1.5rem; background: var(--input-bg); border-radius: 12px; color: var(--text-color); transition: all 0.2s;">
                     <div
                         style="width: 50px; height: 50px; background: #24292e; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white;">
@@ -80,7 +80,7 @@
                 </a>
 
                 <!-- Report Bug -->
-                <a href="https://github.com/FCGLITCHES/simple-yt-downloader/issues" target="_blank" class="feature-item"
+                <a href="https://github.com/FCGLITCHES/GetVideosLocally/issues" target="_blank" class="feature-item"
                     style="text-decoration: none; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 1rem; padding: 1.5rem; background: var(--input-bg); border-radius: 12px; color: var(--text-color); transition: all 0.2s;">
                     <div
                         style="width: 50px; height: 50px; background: var(--error-color); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white;">
@@ -194,17 +194,8 @@
             };
 
             try {
-                // Determine API URL (handle both dev and prod relative paths if needed)
-                // Since this runs in Electron or local server, relative path to root should work 
-                // if served by the same express server. If simply file://, this won't work.
-                // We need to assume the server is running on localhost:9875 usually, 
-                // or we use a relative path if this page is served by the server.
-                // However, in Electron, "file://" protocol is often used.
-                // We should try to find the server port or assumed port.
-
                 let apiUrl = 'http://localhost:9875/api/send-support-email';
 
-                // If we are served via http/s, use relative
                 if (window.location.protocol.startsWith('http')) {
                     apiUrl = '/api/send-support-email';
                 }
