@@ -4,35 +4,66 @@
 
 ![GetVideosLocally Logo](assets/Logo%201.png)
 
-**A free desktop app for downloading, processing, and converting videos from 1000+ supported sites, with support up to 8K and the highest bitrate prioritised. An open-source project built out of spite from 4k downloader. Yes I haven't forgotten when i made the one time purchase to be dumped on.**
+**A free, open-source Windows desktop app for downloading, processing, and converting video and audio from 1,000+ supported sites, with quality options up to 8K.**
 
-
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078D6.svg)](https://www.microsoft.com/windows)
 [![Electron](https://img.shields.io/badge/Electron-42.1.0-47848F.svg)](https://www.electronjs.org/)
 [![yt-dlp](https://img.shields.io/badge/yt--dlp-latest-red.svg)](https://github.com/yt-dlp/yt-dlp)
-[![Security Patch](https://img.shields.io/badge/Security%20Patch-Required-d63031.svg)](#security-patches-v302)
+[![Latest release](https://img.shields.io/github/v/release/FCGLITCHES/GetVideosLocally)](https://github.com/FCGLITCHES/GetVideosLocally/releases)
 
-[⭐ Star](https://github.com/FCGLITCHES/simple-yt-downloader) • 
-[🐛 Report Bug](https://github.com/FCGLITCHES/simple-yt-downloader/issues) • 
-[💬 Discussions](https://github.com/FCGLITCHES/simple-yt-downloader/discussions) • 
-[☕ Support](https://donate.stripe.com/6oU00i73R6eh2yc0oU5AQ00).
+[Download](https://github.com/FCGLITCHES/GetVideosLocally/releases) •
+[Report a bug](https://github.com/FCGLITCHES/GetVideosLocally/issues) •
+[Source](https://github.com/FCGLITCHES/GetVideosLocally)
 
 </div>
 
 ---
 
-## Quick Start
+## Overview
 
-1. Download from [Releases](https://github.com/FCGLITCHES/simple-yt-downloader/releases)
-2. Extract the latest `GetVideosLocally` release package
-3. Run `GetVideosLocally.exe` (portable—no installation needed)
-4. Paste a video URL and process it
+GetVideosLocally is a local-first desktop application built around yt-dlp and FFmpeg. It is designed to provide a straightforward Windows interface for downloading and processing media without requiring an account or cloud-based workflow.
 
-**System Requirements:** Windows 10/11 (64-bit), internet connection, ~200MB disk space
+The project is actively maintained, with recent releases focused on reliability, security hardening, Windows integration, download-history persistence, dependency updates, and regression coverage.
 
----
+## Highlights
+
+- Support for 1,000+ sites through yt-dlp
+- Video quality from 360p up to 8K when available
+- MP4, MKV, MOV and WEBM video output
+- MP3, WAV, M4A, OPUS and FLAC audio extraction
+- Download queues with configurable concurrency
+- Playlist handling
+- Download history with search, filtering and bulk actions
+- Metadata, thumbnail and chapter embedding
+- Custom download folders
+- Desktop notifications and system-tray support
+- Automatic yt-dlp updates
+- Local-first operation with no account requirement
+
+## Security and reliability
+
+Recent releases include safeguards for local file operations and release maintenance, including:
+
+- Restricting sensitive file actions to trusted download locations
+- Sending deletions through the Windows Recycle Bin
+- Escaping remote titles, filenames, paths and other dynamic content before rendering
+- Verifying FFmpeg updates against shipped SHA-256 data
+- Explicit opt-in for Windows Firewall/LAN access
+- Updating or pinning vulnerable dependencies
+- Regression coverage for history persistence, playback, path traversal rejection and affected UI states
+
+See the [release history](https://github.com/FCGLITCHES/GetVideosLocally/releases) for version-specific details.
+
+## Quick start
+
+1. Open the [latest release](https://github.com/FCGLITCHES/GetVideosLocally/releases).
+2. Download either the Windows installer or portable package.
+3. Launch GetVideosLocally.
+4. Paste a supported media URL.
+5. Select the required format and quality, then start the download.
+
+**System requirements:** Windows 10/11 (64-bit), an internet connection, and sufficient local storage for the selected media.
 
 ## Screenshots
 
@@ -48,225 +79,86 @@
 
 </div>
 
----
+## Usage
 
-## Features
+### Downloads
 
-### Download Location & History Hotfix v3.2.4
-- **Reliable destination persistence:** onboarding, Settings, and first-launch defaults now share one saved download-folder source of truth.
-- **Correct historical actions:** completed items retain their original folder, Play opens the media file, and Open Folder still works after the destination changes.
-- **History survives updates:** the installer protects user data before replacing an older version, restores local history storage afterward, and keeps the History tab in the main navigation.
-- **Safer renderer boundaries:** remote titles, filenames, paths, timestamps, sizes, and toast messages are escaped before HTML insertion.
-- **Clearer workspace:** header counters, history navigation, filters, and Settings checkbox groups use a flatter, more consistent layout.
-- **Refreshed runtime:** bundled yt-dlp is updated to `2026.08.19`, and vulnerable release dependencies were upgraded or pinned to patched versions.
+1. Paste a supported URL.
+2. Choose the output format and quality.
+3. Optionally configure advanced download settings.
+4. Select **Download Now**.
 
-### HDR & Interface Polish v3.2.3
-- **Opt-in HDR preference:** HDR defaults off for fresh settings, while Settings and Advanced Options can enable it globally or for one download.
-- **Accurate speed and 8K:** hybrid speed tracking recovers from tiny initial samples, and 8K (4320p) is an explicit quality target with strict resolution caps.
-- **Cleaner download controls:** Advanced Options is flatter and easier to scan, subtitles are integrated into Download Options, and headings use stronger typography.
-- **Redesigned helpers:** the cookie importer and coffee popup now use clearer red-and-white hierarchy with flat action buttons.
-- **Compact release notes:** What’s New uses a smaller two-column layout with visible close and Got it actions.
-
-### UI Clarity v3.2.1
-- **Manrope everywhere:** the onboarding typeface is now the primary app font, including the header wordmark and main download heading.
-- **Flatter setup progress:** numbered onboarding steps use solid colors without gradients or shadows.
-- **Cleaner light footer:** Support Me and its heart retain white contrast without a button shadow.
-- **Compact network settings:** LAN and Windows Firewall guidance appears on hover or keyboard focus instead of occupying a permanent row.
-- **Aligned settings controls:** checkboxes and labels now sit on the same visual center line across themes.
-
-### Smarter Setup v3.2.0
-- **Direct folder selection:** onboarding opens the native folder picker and immediately saves the chosen location to Settings.
-- **Useful first-run defaults:** format, quality, sound, and desktop notification preferences are captured before the first download.
-- **Clearer onboarding:** all five steps use the approved logo, a responsive red-and-white visual system, compact controls, and locally bundled Manrope typography.
-
-### Correct Brand Logo v3.1.2
-- **Approved logo everywhere:** `public/Logo1.ico` is the sole public brand asset and owns web favicons, installer, uninstaller, executables, shortcuts, taskbar windows, system tray, and installed-app registration.
-
-### Smaller & Cleaner v3.1
-- **44% smaller Windows install:** duplicate resources and the unused FFplay executable were removed without dropping download, conversion, probing, or high-resolution support.
-- **Complete uninstall cleanup:** app caches, settings, logs, queues, updater files, shortcuts, startup entries, and legacy registration are removed.
-- **Downloaded videos stay protected:** uninstall keeps downloaded media by default and asks before deleting it.
-
-### Security Patches v3.0.2
-- **Required update:** local file actions are constrained to the configured downloads folder, deletions use the Recycle Bin, FFmpeg updates are verified against a shipped SHA256 manifest, and Windows Firewall access is explicit opt-in.
-
-### Video & Audio Processing
-- Video format conversion and processing
-- Supports 1000+ websites
-- Audio extraction (MP3, WAV, M4A, OPUS, FLAC)
-- **Formats:** MP4, MKV, MOV, WEBM (video) and MP3, WAV, M4A, OPUS, and FLAC (audio)
-- **Quality:** 360p to 8K
-- **Audio Quality:** 128–320 kbps MP3 options
-
-### Download Control
-- **Concurrent downloads** (configurable: 1, 3, or 5 at a time)
-- **Speed limiting** to prevent bandwidth hogging
-- **Queue management** with progress tracking
-- **Pause/Resume** downloads (coming in the next update)
-- **Cancel** at any time
-- **Real-time progress** with speed and ETA
-
-### User Experience
-- **Modern UI** with multiple themes (Light, Dark, Minimal, Vibrant)
-- **Download history** with search and filter and folders view for playlists
-- **Bulk delete** multiple files or folders
-- **Metadata embedding** (thumbnail, chapters)
-- **Desktop notifications** and sound alerts
-- **Custom download folder**
-- **Minimise to system tray** 
-
-### Advanced
-- **Authentication support** for content you have permission to access
-- **Security hardening** for local file operations, FFmpeg update integrity, and explicit LAN firewall access
-- **Automatic tool updates** for yt-dlp
-- **Duplicate detection** to skip existing files
-- **Organized playlists** in separate folders
-- **Content filtering** to block inappropriate sites (pornography and gambling)
-
----
-
-## Installation & Usage
-
-### For End Users
-
-**Windows Download:**
-1. Go to [Releases](https://github.com/FCGLITCHES/simple-yt-downloader/releases)
-2. Download the latest `GetVideosLocally` package
-3. Extract and run `GetVideosLocally.exe`
-
-### Basic Usage
-1. Open GetVideosLocally
-2. Paste a video URL (using the paste button or keyboard shortcut)
-3. Select format (MP4/MP3) and quality
-4. Click **Download Now**
-
-### Playlist Processing
-1. Paste a playlist URL (playlist detection works with paste button or manual entry)
-2. Choose: process selected video only, or entire playlist
-3. Set concurrent downloads (reduce if connection is unstable)
-4. Start
-
-**Note:** Playlist detection automatically works when pasting URLs using the paste button or when manually typing URLs.
+For playlists, the app can process either the selected item or the full playlist. Concurrent downloads can be limited when connection stability or bandwidth is a concern.
 
 ### Authentication
-For accessing content you have permission to access:
-1. Settings → **Import Cookies**
-2. Export `cookies.txt` from your browser (use a "cookies.txt" extension)
-3. Upload/paste and save
 
-### Download History
-- View all downloads in the History tab
-- Filter by type (Singles, Playlists)
-- Search by filename
-- Sort by date, name, or size
-- Bulk delete files
+For content you are authorised to access, browser cookies can be imported from **Settings → Import Cookies**.
 
-### Settings
-- **Performance:** Speed limits, concurrency
-- **Appearance:** Themes, UI scale
-- **Download Options:** File numbering, duplicate skip
-- **Notifications:** Sound, desktop alerts
-- **Download Location:** Custom folder
+### History
 
-### Content Safety
-- **Automatic filtering:** Pornography and gambling sites are automatically blocked
-- **Frontend and backend validation:** Protection at multiple levels
-- **Clear error messages:** Users are informed when blocked content is detected
+The History tab supports:
 
----
+- Singles and playlist views
+- Search by title or filename
+- Date and type filters
+- Sorting by date, name or file size
+- Bulk deletion
+- Opening completed files or their containing folders
 
-## Updating Tools
+### Updating tools
 
-GetVideosLocally checks for yt-dlp updates automatically:
-1. Settings → **Update Tools**
-2. App checks and installs yt-dlp updates if available
-
-**Note:** FFmpeg updates require manual installation from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html) if needed.
-
----
-
-## Troubleshooting
-
-### Downloads Not Starting
-- Check internet connection
-- Verify URL is correct
-- Try updating tools via Settings
-- Restart the app
-- Check if video is available in your region
-- **Note:** Pornography and gambling sites are blocked for safety reasons
-
-### Low Quality Downloads
-- Select highest quality option
-- Import cookies for content you have permission to access
-- Some videos may not have 8K available
-
-### Playlist Downloads Failing
-- Reduce concurrent downloads (set to 1)
-- Check internet stability
-- Reupload cookies if needed
-- Some videos may be region-locked or unavailable
-
-### FFmpeg Errors
-- Go to Settings → Update Tools
-- Re-download FFmpeg from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html) if needed
-
-### App Won't Start
-- Check if another instance is running
-- Check Windows Firewall (allow local connections)
-- Try running as administrator
-- Check console for error messages
-
-### Port Already in Use
-- App automatically finds available ports
-- If issues persist, restart your computer
-
----
+GetVideosLocally can update yt-dlp from within **Settings → Update Tools**. FFmpeg updates can be installed separately when required.
 
 ## Development
 
 ### Prerequisites
-- **Node.js** 16+ and npm
-- **Git**
+
+- Node.js 16+
+- npm
+- Git
 
 ### Setup
+
 ```bash
-git clone https://github.com/FCGLITCHES/simple-yt-downloader.git
-cd simple-yt-downloader
+git clone https://github.com/FCGLITCHES/GetVideosLocally.git
+cd GetVideosLocally
 npm install
 ```
 
-### Development Commands
+### Development commands
+
 ```bash
 # Run in development mode
 npm run electron:dev
 
-# Run server only
+# Run the backend server
 npm start
 
-# Build portable package
+# Build the portable package
 npm run build:portable
 
-# Build Windows installer
+# Build the Windows installer
 npm run build
 
 # Icon management
-npm run icon:generate    # Generate icons
-npm run icon:verify      # Verify icon format
-npm run icon:verify-exe  # Verify executable icon
+npm run icon:generate
+npm run icon:verify
+npm run icon:verify-exe
 ```
 
-Output is in `dist/` after building.
+Build output is written to `dist/`.
 
-### Project Structure
-``` 
-getvideoslocally/
-├── assets/              # Images, sounds, UI assets
-├── bin/                 # Bundled executables (yt-dlp, ffmpeg, node)
+### Project structure
+
+```text
+GetVideosLocally/
+├── assets/              # Images, sounds and UI assets
+├── bin/                 # Bundled executables and tools
 ├── public/              # Static HTML and assets
 ├── backend/             # Backend modules and services
 ├── tests/               # Automated tests
 ├── electron-main.js     # Electron main process
-├── server.js            # Backend (Express + WebSocket)
+├── server.js            # Express/WebSocket backend
 ├── script.js            # Frontend logic
 ├── index.html           # Main UI
 ├── style.css            # Styles
@@ -276,115 +168,47 @@ getvideoslocally/
 ```
 
 ### Architecture
-- **Main Process:** Application lifecycle, window management, IPC
-- **Backend Server:** Express + WebSocket, video processing, yt-dlp/FFmpeg integration
-- **Frontend:** UI, WebSocket client, download queue, settings
 
-### Key Implementation Details
-- **Concurrency:** `p-limit` library for controlled concurrent downloads
-- **Networking:** IPv4 (127.0.0.1) for reliable local connections
-- **Port Selection:** Automatically finds available ports
-- **Error Handling:** Comprehensive error messages and logging
-- **Process Cleanup:** Proper shutdown of all child processes
-
----
+- **Electron main process:** application lifecycle, windows and IPC
+- **Backend:** Express, WebSocket, media-processing orchestration and local services
+- **Frontend:** download workflow, queue, history and settings UI
+- **Media tooling:** yt-dlp and FFmpeg
 
 ## Contributing
 
-Bug reports and feature requests welcome via [Issues](https://github.com/FCGLITCHES/simple-yt-downloader/issues) and [Discussions](https://github.com/FCGLITCHES/simple-yt-downloader/discussions).
+Bug reports, feature requests, documentation improvements, translations and code contributions are welcome.
 
-**Ways to help:**
-- 🐛 Report bugs
-- 💡 Suggest features
-- 📝 Improve documentation
-- 🌍 Translate UI
-- 💻 Code contributions (open an issue first)
+- [Open an issue](https://github.com/FCGLITCHES/GetVideosLocally/issues)
+- Check existing issues before filing a duplicate
+- Keep changes focused and consistent with the existing project
+- Test behavioural changes before submitting them
+- Update documentation where behaviour changes
 
-**Before contributing:**
-- Check existing issues/discussions
-- Follow existing code style
-- Test changes thoroughly
-- Update documentation if needed
-
-**Attribution:** By contributing, you agree your work becomes part of GetVideosLocally with proper credit to [FCGLITCHES](https://github.com/FCGLITCHES).
-
----
+For larger changes, opening an issue first is recommended so the approach can be discussed before implementation.
 
 ## Support
 
-GetVideosLocally is **free and always will be.**
+GetVideosLocally is free and open source. The most useful ways to support the project are to report reproducible bugs, suggest improvements, contribute fixes, and share the project with people who may find it useful.
 
-**Help keep it alive:**
-1. ⭐ **Star on GitHub**
-2. 🐛 **Report bugs** to improve the app
-3. 💬 **Share feedback** and ideas
-4. 📢 **Tell others** about GetVideosLocally
-5. ☕ **[Buy me a coffee](https://donate.stripe.com/6oU00i73R6eh2yc0oU5AQ00)** (optional)
-
----
+Optional financial support is available through the project's [support link](https://donate.stripe.com/6oU00i73R6eh2yc0oU5AQ00).
 
 ## License
 
-**MIT License** – See [LICENSE](LICENSE) file.
+GetVideosLocally is licensed under the [MIT License](LICENSE).
 
-### Third-Party Licenses
-- **yt-dlp:** [Unlicense](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE)
-- **FFmpeg:** [LGPL/GPL](https://ffmpeg.org/legal.html)
-- **Electron:** [MIT](https://github.com/electron/electron/blob/main/LICENSE)
-- Other dependencies: See `package.json`
+### Third-party software
 
-### Attribution
-MIT allows reuse, modification, and redistribution, including forks and commercial use, as long as the copyright notice and license text remain with the project.
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — Unlicense
+- [FFmpeg](https://ffmpeg.org/legal.html) — LGPL/GPL depending on build configuration
+- [Electron](https://github.com/electron/electron) — MIT
+- Other dependencies are listed in `package.json`
 
-If you fork, modify, or redistribute GetVideosLocally, please also keep visible credit in your docs and app credit area linking back to the source repo:
-- [FCGLITCHES/simple-yt-downloader](https://github.com/FCGLITCHES/simple-yt-downloader)
+If you fork or redistribute GetVideosLocally, retain the licence notices required by the MIT licence. Visible attribution back to the original project is appreciated:
 
-Preferred credit examples:
-- "Based on GetVideosLocally by [FCGLITCHES](https://github.com/FCGLITCHES/simple-yt-downloader)"
-- "Forked from [FCGLITCHES/simple-yt-downloader](https://github.com/FCGLITCHES/simple-yt-downloader)"
+`https://github.com/FCGLITCHES/GetVideosLocally`
 
----
+## Responsible use
 
-## Disclaimer
+GetVideosLocally is a media-processing tool. Users are responsible for ensuring they have the rights or permission required for the content they process and for complying with applicable copyright law and platform terms.
 
-GetVideosLocally is a multi-site video processing tool for 1000+ supported sites. **You are solely responsible for ensuring you have proper authorization and rights** to process any content you use with this software. This includes:
-
-- Obtaining permission from content owners/rightsholders
-- Complying with all applicable copyright laws
-- Respecting platform terms of service
-- Ensuring your use complies with all local laws and regulations
-
-**Use of this software must comply with YouTube's Terms of Service and all other platform terms.** Downloading or processing content without proper authorization may violate terms of service and copyright laws.
-
-Developers are not liable for misuse. This software is provided as-is for lawful use only.
-
----
-
-## Why GetVideosLocally Exists
-
-**Problem:** Existing video downloaders have limits
-- ❌ Force low-quality downloads
-- 💰 Paywall high resolutions
-- 🗑️ Outdated, unmaintained tools
-- 🌐 Browser-based tools with limitations
-
-**Solution:** GetVideosLocally
-- ✅ Download best available quality (up to 8K)
-- 🆓 100% free, no subscriptions
-- 🔄 Built with modern tools (yt-dlp)
-- 🖥️ Native desktop app—fast and reliable
-
----
-
-<div align="center">
-
-**Made with ❤️ by [FCGLITCHES](https://github.com/FCGLITCHES)**
-
-**Video processing and format conversion tools.**
-
-[⭐ Star](https://github.com/FCGLITCHES/simple-yt-downloader) • 
-[🐛 Issues](https://github.com/FCGLITCHES/simple-yt-downloader/issues) • 
-[💬 Discussions](https://github.com/FCGLITCHES/simple-yt-downloader/discussions) • 
-[☕ Support](https://donate.stripe.com/6oU00i73R6eh2yc0oU5AQ00)
-
-</div>
+The software is provided as-is for lawful use.
