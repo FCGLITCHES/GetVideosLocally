@@ -8,7 +8,7 @@ const builderConfig = require("../electron-builder.json");
 const packageManifest = require("../package.json");
 const packageLock = require("../package-lock.json");
 
-test("3.2.5 hotfix metadata stays aligned across package and UI boundaries", () => {
+test("3.2.6 hotfix metadata stays aligned across package and UI boundaries", () => {
   const indexHtml = fs.readFileSync(
     path.join(projectRoot, "index.html"),
     "utf8",
@@ -18,11 +18,11 @@ test("3.2.5 hotfix metadata stays aligned across package and UI boundaries", () 
     "utf8",
   );
 
-  assert.equal(packageManifest.version, "3.2.5");
-  assert.equal(packageLock.version, "3.2.5");
-  assert.equal(packageLock.packages[""].version, "3.2.5");
-  assert.match(indexHtml, /data-app-version="3\.2\.5"/);
-  assert.match(rendererScript, /DEFAULT_APP_VERSION = '3\.2\.5'/);
+  assert.equal(packageManifest.version, "3.2.6");
+  assert.equal(packageLock.version, "3.2.6");
+  assert.equal(packageLock.packages[""].version, "3.2.6");
+  assert.match(indexHtml, /data-app-version="3\.2\.6"/);
+  assert.match(rendererScript, /DEFAULT_APP_VERSION = '3\.2\.6'/);
   assert.match(rendererScript, /Reliable Retry/);
   assert.match(rendererScript, /Remove Means Remove/);
   const updatePopupSource = rendererScript.slice(

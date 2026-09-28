@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-app-version="3.2.5">
+<html lang="en" data-app-version="3.2.6">
 
 <head>
     <meta charset="UTF-8">
@@ -227,11 +227,6 @@
 
                 </div>
                 <div id="downloadLinksArea" class="download-links-container with-top-padding">
-                    <div id="failedDownloadsToolbar" class="failed-downloads-toolbar is-hidden-initial" role="status">
-                        <span id="failedDownloadsCount"></span>
-                        <button id="retryFailedDownloadsBtn" class="retry-failed-btn" type="button"
-                            title="Retry all failed downloads"><i class="fas fa-rotate-right"></i> Retry all</button>
-                    </div>
                     <div id="emptyDownloadState" class="empty-state">
                         <i class="fas fa-cloud-arrow-down empty-state-icon"></i>
                         <p class="empty-state-title">No downloads yet</p>
@@ -738,6 +733,7 @@
     </div>
 
     <script src="/public/local-api-auth.js"></script>
+    <script src="/public/download-dismissals.js"></script>
     <script src="/public/content-filter-client.js"></script>
     <script src="script.js"></script>
     <!-- Scroll to Top Button -->

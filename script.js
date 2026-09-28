@@ -78,8 +78,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     userSettings = loadSettings();
     downloadItemsState = new Map(); // To store item details and manage them
-    const dismissedDownloadItems = new Set();
-    const removingDownloadItems = new Set();
+    const downloadDismissals = window.createDownloadDismissals({
+        storage: localStorage,
+        clientId,
+        removeRemote: async (itemId) => {
+            const response = await window.localApiAuth.authorizedFetch(`/download-items/${encodeURIComponent(itemId)}?clientId=${encodeURIComponent(clientId)}`, { method: 'DELETE' });
+            if (!response.ok) throw new Error(`Removal failed with ${response.status}`);
+        }
+    });
+    const dismissedDownloadItems = downloadDismissals.dismissed;
+    let removalRetryTimer;
     window.__GVL_ACTIVE_DOWNLOAD_COUNT = 0;
 
     // Initialize error telemetry (opt-in, privacy-respectful)
@@ -178,7 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const youtubeDownloadLinksArea = document.getElementById('downloadLinksArea');
     const emptyDownloadState = document.getElementById('emptyDownloadState');
     const clearYoutubeDownloadsBtn = document.getElementById('clearYoutubeDownloadsBtn');
-    const retryFailedDownloadsBtn = document.getElementById('retryFailedDownloadsBtn');
 
     if (emptyDownloadState) emptyDownloadState.style.display = 'flex';
     if (clearYoutubeDownloadsBtn) clearYoutubeDownloadsBtn.style.display = 'none';
@@ -945,6 +952,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.ws = ws; // Make it globally accessible
 
         ws.onopen = () => {
+            void flushDismissedDownloads();
             console.log('WebSocket connection established.');
             if (youtubeStatusDiv) showStatus('Connected to server.', 'youtube', 'success');
 
@@ -1013,7 +1021,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Message Handling ---
     function handleWebSocketMessage(data) {
         const { type, message, itemId, downloadUrl, filename, title, actualSize, percent, rawSpeed, speedBytesPerSec, source = activeDownloader, isPlaylistItem, playlistIndex, playlistId, playlistTitle, thumbnail, fullPath, downloadFolder, format, quality } = data;
-        if (itemId && (dismissedDownloadItems.has(itemId) || removingDownloadItems.has(itemId))) return;
+        if (itemId && (dismissedDownloadItems.has(itemId))) return;
         const currentItemState = downloadItemsState.get(itemId);
 
         // Hide playlist meta items (e.g., 'Fetching playlist: ...')
@@ -1241,7 +1249,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function createDownloadItemStructure(itemId, titleText, source, isPlaylistItem = false) {
         const linksArea = getLinksArea(source);
-        if (!linksArea || downloadItemsState.has(itemId) || dismissedDownloadItems.has(itemId) || removingDownloadItems.has(itemId)) return;
+        if (!linksArea || downloadItemsState.has(itemId) || dismissedDownloadItems.has(itemId)) return;
 
         const itemDiv = document.createElement('div');
         itemDiv.className = 'download-item';
@@ -1341,7 +1349,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const retryBtn = document.createElement('button');
         retryBtn.className = 'item-control-btn item-retry-btn';
-        retryBtn.innerHTML = '<i class="fas fa-rotate-right" aria-hidden="true"></i><span>Retry</span>';
+        retryBtn.innerHTML = '<i class="fas fa-rotate-right" aria-hidden="true"></i>';
         retryBtn.title = 'Retry this download';
         retryBtn.setAttribute('aria-label', 'Retry this download');
         retryBtn.style.display = 'none';
@@ -1658,7 +1666,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Update download stats
             updateDownloadStats();
-            updateRetryFailedButtonVisibility();
         }
     }
 
@@ -1689,7 +1696,6 @@ document.addEventListener('DOMContentLoaded', () => {
             showActionButtons(itemId);
         }
         updateDownloadStats();
-        updateRetryFailedButtonVisibility();
         showFailureHelp(errorMessage);
     }
 
@@ -1711,27 +1717,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleRemoveDownloadItem(itemId, source) {
-        if (removingDownloadItems.has(itemId)) return false;
-        removingDownloadItems.add(itemId);
-        const card = document.getElementById(`item-${itemId}`);
-        card?.querySelectorAll('button').forEach(button => { button.disabled = true; });
+        if (dismissedDownloadItems.has(itemId)) return true;
         try {
-            const response = await window.localApiAuth.authorizedFetch(`/download-items/${encodeURIComponent(itemId)}?clientId=${encodeURIComponent(clientId)}`, { method: 'DELETE' });
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                throw new Error(data.error || `Server returned ${response.status}`);
-            }
-            dismissedDownloadItems.add(itemId);
+            downloadDismissals.dismiss(itemId);
             removeDownloadItemFromUI(itemId);
             if (![...downloadItemsState.values()].some(item => item.retryable)) hideFailureHelp();
+            showStatus('Download removed.', source, 'success');
+            void flushDismissedDownloads();
             return true;
         } catch (error) {
-            card?.querySelectorAll('button').forEach(button => { button.disabled = false; });
             showStatus(`Could not remove download: ${error.message}. Please try again.`, source, 'error');
             return false;
-        } finally {
-            removingDownloadItems.delete(itemId);
         }
+    }
+
+    async function flushDismissedDownloads() {
+        clearTimeout(removalRetryTimer);
+        const remaining = await downloadDismissals.flush();
+        if (remaining) removalRetryTimer = setTimeout(flushDismissedDownloads, 5000);
     }
 
     function removeDownloadItemFromUI(itemId) {
@@ -1744,15 +1747,7 @@ document.addEventListener('DOMContentLoaded', () => {
         progressUpdateCache.delete(`progressBar-${itemId}`);
         progressUpdateCache.delete(`progressBarContainer-${itemId}`);
         updateDownloadStats();
-        updateRetryFailedButtonVisibility();
         console.log(`Removed item ${itemId} from UI and state.`);
-    }
-
-    function updateRetryFailedButtonVisibility() {
-        if (!retryFailedDownloadsBtn) return;
-        const count = Array.from(downloadItemsState.values()).filter(item => item.retryable === true).length;
-        setElementHiddenState(document.getElementById('failedDownloadsToolbar'), count === 0);
-        document.getElementById('failedDownloadsCount').textContent = `${count} failed download${count === 1 ? '' : 's'}`;
     }
 
     function showActionButtons(itemId) {
@@ -1770,7 +1765,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleRetryDownload(itemId) {
         const state = downloadItemsState.get(itemId);
-        if (!state || state.retrying || removingDownloadItems.has(itemId)) return false;
+        if (!state || state.retrying) return false;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
             showStatus('Waiting for the download server to reconnect. Please retry once connected.', state.source, 'error');
             return false;
@@ -1801,7 +1796,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             dismissedDownloadItems.add(itemId);
             removeDownloadItemFromUI(itemId);
-            updateRetryFailedButtonVisibility();
             showStatus('Retry requested...', 'youtube', 'success');
             return true;
         } catch (error) {
@@ -2033,6 +2027,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (recoverableResponse.ok) {
                 const data = await recoverableResponse.json();
                 (data.items || []).forEach((item) => {
+                    if (dismissedDownloadItems.has(item.itemId)) return;
                     createDownloadItemStructure(item.itemId, item.title || 'Recoverable download', item.source || 'youtube', item.isPlaylistItem);
                     showActionButtons(item.itemId);
                     updateDownloadItemStatus(item.itemId, 'Paused. Ready to resume after restart.', item.source || 'youtube', 'info');
@@ -2060,6 +2055,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (failedResponse.ok) {
                 const data = await failedResponse.json();
                 (data.items || []).forEach((failed) => {
+                    if (dismissedDownloadItems.has(failed.itemId)) return;
                     createDownloadItemStructure(failed.itemId, failed.title || 'Failed download', failed.source || 'youtube', false);
                     updateDownloadItemError(failed.itemId, failed.message || 'Download failed', failed.source || 'youtube');
                     if (failed.thumbnail) updateDownloadItemThumbnail(failed.itemId, failed.thumbnail);
@@ -2067,7 +2063,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (failed.quality) updateDownloadItemQuality(failed.itemId, failed.quality);
                 });
             }
-            updateRetryFailedButtonVisibility();
         } catch (error) {
             console.warn('Could not load recoverable download state:', error);
         }
@@ -2353,21 +2348,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         setElementHiddenState(scheduleDownloadAt, !showScheduler);
         scheduleDownloadAt.style.display = showScheduler ? 'block' : 'none';
-    }
-
-    if (retryFailedDownloadsBtn) {
-        retryFailedDownloadsBtn.addEventListener('click', async () => {
-            retryFailedDownloadsBtn.disabled = true;
-            const failedIds = [...downloadItemsState.entries()]
-                .filter(([, item]) => item.retryable && !item.retrying)
-                .map(([itemId]) => itemId);
-            try {
-                for (const itemId of failedIds) await handleRetryDownload(itemId);
-            } finally {
-                retryFailedDownloadsBtn.disabled = false;
-                updateRetryFailedButtonVisibility();
-            }
-        });
     }
 
     // --- Tab Management ---
@@ -5191,18 +5171,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===== UPDATE CHECK & CHANGELOG SYSTEM =====
 const UPDATE_LAST_SEEN_KEY = 'gvl_lastSeenVersion';
 const UPDATE_POPUP_DELAY_MS = 2500;
-const DEFAULT_APP_VERSION = '3.2.5';
+const DEFAULT_APP_VERSION = '3.2.6';
 const FALLBACK_APP_CHANGELOG = {
     version: DEFAULT_APP_VERSION,
-    title: "Download Recovery Hotfix v3.2.5",
+    title: "Download Recovery Hotfix v3.2.6",
     date: 'September 2026',
     required: false,
     badge: 'Hotfix',
-    summary: 'Failed downloads stay visible, retries start fresh attempts, and removed items stay gone after restarting.',
+    summary: 'X removes items immediately and keeps them hidden if the server connection drops. Retry sits beside X as an icon.',
     items: [
-        { icon: 'fa-rotate-right', title: 'Reliable Retry', desc: 'Retry one failed download or all of them. If an attempt fails again, its error stays visible.' },
+        { icon: 'fa-plug', title: 'Removal Survives Connection Drops', desc: 'Dismissed items stay hidden across restarts while the app finishes removing their saved queue entries in the background.' },
+        { icon: 'fa-rotate-right', title: 'Reliable Retry', desc: 'Use the retry icon beside X to start a new attempt. If an attempt fails again, its error stays visible.' },
         { icon: 'fa-xmark', title: 'Remove Means Remove', desc: 'The X and Cancel buttons stop unfinished work and remove its saved queue entry, including after a restart.' },
-        { icon: 'fa-list-check', title: 'Clearer Failure Controls', desc: 'Failed items show a short explanation, expandable error details, and a labelled Retry button. Failed downloads no longer count as queued.' },
+        { icon: 'fa-list-check', title: 'Clearer Failure Controls', desc: 'Failed items show a short explanation, expandable error details, and a retry icon beside X. Failed downloads no longer count as queued.' },
         { icon: 'fa-clock-rotate-left', title: 'Consistent Recovery', desc: 'Interrupted work returns as resumable. Cancelled items stay removed, and failed resumed downloads can be retried.' },
         { icon: 'fa-sliders', title: 'Retry Settings Respected', desc: 'Automatic retries now follow your Smart Retry setting and attempt limit.' }
     ]

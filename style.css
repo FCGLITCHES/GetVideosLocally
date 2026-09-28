@@ -372,7 +372,6 @@ h6 {
 }
 
 .is-hidden-initial,
-.failed-downloads-toolbar.is-hidden-initial,
 .modal.is-hidden-initial,
 .onboarding-modal.is-hidden-initial {
     display: none;
@@ -633,45 +632,17 @@ body[data-ui-density="compact"] .settings-actions {
     padding-top: 1.25rem;
 }
 
-.failed-downloads-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    flex: 0 0 auto;
-    padding-bottom: 1rem;
-    margin-bottom: 1rem;
-    border-bottom: 1px solid var(--border-color);
-    font-size: 0.9rem;
-    font-weight: 600;
-}
-
-.retry-failed-btn,
 .item-control-btn.item-retry-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    width: auto;
-    height: auto;
-    min-height: 32px;
-    padding: 0.4rem 0.65rem;
-    border: 1px solid var(--border-color);
-    border-radius: 5px;
     background: var(--input-bg);
     color: var(--text-color);
-    font: inherit;
-    font-size: 0.85rem;
-    cursor: pointer;
+    border: 1px solid var(--border-color);
     box-shadow: none;
 }
 
-.retry-failed-btn:hover,
 .item-control-btn.item-retry-btn:hover {
     border-color: var(--primary-color);
 }
 
-.retry-failed-btn:disabled,
 .item-control-btn:disabled {
     opacity: 0.6;
     cursor: wait;
@@ -1468,8 +1439,7 @@ body[data-ui-density="compact"] .settings-actions {
     gap: 0.6rem;
     margin-left: 0.8rem;
     padding-top: 0.2rem;
-    min-width: 110px;
-    /* Ensure consistent width */
+    min-width: 0;
 }
 
 .item-control-buttons {
