@@ -23,6 +23,7 @@ function registerApiRoutes(
     getFailedDownloads,
     retryFailedDownload,
     retryAllFailedDownloads,
+    dismissDownloadItem,
     previewPlaylist,
     logger = require("../utils/logger").logger,
   },
@@ -244,6 +245,19 @@ function registerApiRoutes(
     res.json({
       items: getFailedDownloads(String(clientId)),
     });
+  });
+
+  app.delete("/download-items/:itemId", async (req, res) => {
+    const clientId = req.query.clientId;
+    if (!clientId || !req.params.itemId) {
+      return res.status(400).json({ error: "clientId and itemId are required" });
+    }
+    try {
+      res.json(await dismissDownloadItem(String(clientId), String(req.params.itemId)));
+    } catch (error) {
+      logger.error("Error removing download item:", error);
+      res.status(500).json({ error: error.message || "Failed to remove download item." });
+    }
   });
 
   app.post("/failed-downloads/:itemId/retry", async (req, res) => {

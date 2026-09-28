@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-app-version="3.2.4">
+<html lang="en" data-app-version="3.2.5">
 
 <head>
     <meta charset="UTF-8">
@@ -227,13 +227,16 @@
 
                 </div>
                 <div id="downloadLinksArea" class="download-links-container with-top-padding">
+                    <div id="failedDownloadsToolbar" class="failed-downloads-toolbar is-hidden-initial" role="status">
+                        <span id="failedDownloadsCount"></span>
+                        <button id="retryFailedDownloadsBtn" class="retry-failed-btn" type="button"
+                            title="Retry all failed downloads"><i class="fas fa-rotate-right"></i> Retry all</button>
+                    </div>
                     <div id="emptyDownloadState" class="empty-state">
                         <i class="fas fa-cloud-arrow-down empty-state-icon"></i>
                         <p class="empty-state-title">No downloads yet</p>
                         <p class="empty-state-subtitle">Paste a video URL above to get started</p>
                     </div>
-                    <button id="retryFailedDownloadsBtn" class="download-btn secondary-btn delete-all-bottom-btn is-hidden-initial"
-                        type="button" title="Retry all failed downloads"><i class="fas fa-rotate-right"></i> Retry Failed</button>
                     <button id="clearYoutubeDownloadsBtn" class="download-btn danger-btn delete-all-bottom-btn"
                         type="button" title="Delete all downloads"><i class="fas fa-trash"></i> Delete All</button>
                 </div>

@@ -171,8 +171,6 @@ const env = loadEnv(process.env);
     logger: logger,
   });
   await loadPausedJobs();
-  await loadScheduledJobs();
-  await loadFailedJobs();
   await historyIndex._loadPromise;
 
   // Set up executables with unified env var reading (support legacy names for compatibility)
@@ -877,6 +875,7 @@ const env = loadEnv(process.env);
       videoUrl: failedJob.videoUrl,
       format: failedJob.format,
       quality: failedJob.quality,
+      thumbnail: failedJob.thumbnail || null,
     };
   }
 
@@ -919,32 +918,37 @@ const env = loadEnv(process.env);
 
   async function queueFailedDownloadRetry(clientId, itemId) {
     const failedJob = failedDownloads.get(itemId);
-    if (!failedJob) {
+    if (!failedJob || String(failedJob.clientId) !== String(clientId)) {
       throw new Error("Failed download not found.");
     }
 
-    failedDownloads.delete(itemId);
-    await saveFailedJobs();
-    await handleDownloadRequest(clientId, {
+    const newItemId = await handleDownloadRequest(clientId, {
       url: failedJob.videoUrl,
       format: failedJob.format,
       quality: failedJob.quality,
       source: failedJob.source,
-      playlistAction: failedJob.playlistAction || "single",
       concurrency: failedJob.concurrency || 1,
       singleConcurrency: failedJob.singleConcurrency || 1,
       ...failedJob.settings,
+      playlistAction: "single",
     });
+    if (!newItemId) {
+      throw new Error("The download could not be queued. The failed item is still available.");
+    }
+    failedDownloads.delete(itemId);
+    await downloadState.saveRuntimeState();
 
-    return { success: true, itemId };
+    return { success: true, itemId, newItemId };
   }
 
   async function retryAllFailedDownloads(clientId) {
     const failedItems = getFailedDownloads(clientId);
+    const retriedItemIds = [];
     for (const item of failedItems) {
       await queueFailedDownloadRetry(clientId, item.itemId);
+      retriedItemIds.push(item.itemId);
     }
-    return { success: true, count: failedItems.length };
+    return { success: true, count: retriedItemIds.length, retriedItemIds };
   }
 
   async function scheduleDownloadExecution(scheduleId) {
@@ -1067,7 +1071,7 @@ const env = loadEnv(process.env);
 
   async function storeFailedDownload(itemId, failedJob) {
     failedDownloads.set(itemId, failedJob);
-    await saveFailedJobs();
+    await downloadState.saveRuntimeState();
   }
 
   async function clearFailedDownload(itemId) {
@@ -1075,7 +1079,31 @@ const env = loadEnv(process.env);
       return;
     }
     failedDownloads.delete(itemId);
-    await saveFailedJobs();
+    await downloadState.saveRuntimeState();
+  }
+
+  async function dismissDownloadItem(clientId, itemId) {
+    const savedJob = failedDownloads.get(itemId)
+      || pausedDownloads.get(itemId)
+      || downloadQueue.get(itemId)
+      || activeProcesses.get(itemId)
+      || scheduledDownloads.get(itemId);
+    if (!savedJob) {
+      return { success: true, itemId };
+    }
+    const owner = savedJob.clientId || savedJob.itemData?.clientId;
+    if (String(owner) !== String(clientId)) {
+      throw new Error("Download item not found.");
+    }
+    if (failedDownloads.has(itemId)) {
+      failedDownloads.delete(itemId);
+    } else if (scheduledDownloads.has(itemId)) {
+      await deleteScheduledDownload(clientId, itemId);
+    } else {
+      await handleCancelRequest(clientId, itemId);
+    }
+    await downloadState.saveRuntimeState();
+    return { success: true, itemId };
   }
 
   function buildRecoveryJobSpec(itemId, jobData, overrides = {}) {
@@ -1101,13 +1129,14 @@ const env = loadEnv(process.env);
 
   async function snapshotRecoverableDownloadsForShutdown() {
     for (const [itemId, queuedItem] of downloadQueue.entries()) {
-      if (queuedItem?.isMeta) {
+      if (queuedItem?.isMeta || queuedItem?.cancelled) {
         continue;
       }
       pausedDownloads.set(itemId, buildRecoveryJobSpec(itemId, queuedItem));
     }
 
     for (const [itemId, procInfo] of activeProcesses.entries()) {
+      if (procInfo.cancelled) continue;
       const jobData = procInfo.itemData || procInfo;
       pausedDownloads.set(
         itemId,
@@ -1691,6 +1720,7 @@ const env = loadEnv(process.env);
             schedulePlaylistMetadataPrefetch(individualItemId, async () => {
               try {
                 if (
+                  !downloadQueue.has(individualItemId) ||
                   downloadQueue.get(playlistMetaId)?.cancelled ||
                   downloadQueue.get(individualItemId)?.cancelled
                 ) {
@@ -1704,6 +1734,7 @@ const env = loadEnv(process.env);
                   format,
                 );
                 if (
+                  !downloadQueue.has(individualItemId) ||
                   downloadQueue.get(playlistMetaId)?.cancelled ||
                   downloadQueue.get(individualItemId)?.cancelled
                 ) {
@@ -1735,7 +1766,9 @@ const env = loadEnv(process.env);
           }
 
           return playlistItemProcessingLimit(async () => {
+            if (downloadQueue.get(individualItemId) !== itemData) return;
             if (
+              !downloadQueue.has(individualItemId) ||
               downloadQueue.get(playlistMetaId)?.cancelled ||
               downloadQueue.get(individualItemId)?.cancelled
             ) {
@@ -1811,7 +1844,7 @@ const env = loadEnv(process.env);
         scheduleSingleMetadataPrefetch(itemId, async () => {
           try {
             // Check if item was cancelled before fetching
-            if (downloadQueue.get(itemId)?.cancelled) {
+            if (!downloadQueue.has(itemId) || downloadQueue.get(itemId)?.cancelled) {
               return;
             }
             const videoInfo = await getVideoInfo(
@@ -1822,7 +1855,7 @@ const env = loadEnv(process.env);
               format,
             );
             // Check again after fetch in case it was cancelled during fetch
-            if (downloadQueue.get(itemId)?.cancelled) {
+            if (!downloadQueue.has(itemId) || downloadQueue.get(itemId)?.cancelled) {
               return;
             }
             // Update the item data with the fetched title
@@ -1881,7 +1914,8 @@ const env = loadEnv(process.env);
       metadataService.configureConcurrency(singleRequestContext.concurrency);
 
       singleVideoProcessingLimit(async () => {
-        if (downloadQueue.get(itemId)?.cancelled) {
+        if (downloadQueue.get(itemId) !== itemData) return;
+        if (!downloadQueue.has(itemId) || downloadQueue.get(itemId)?.cancelled) {
           sendMessageToClient(clientId, {
             type: "cancel_confirm",
             message: "Download cancelled before start.",
@@ -1894,11 +1928,16 @@ const env = loadEnv(process.env);
         // Use unified video processor for all supported sites
         await processVideo(clientId, itemId, itemData);
       });
+      return itemId;
     }
   }
 
   // ==================== CANCELLATION HANDLING ====================
   async function handleCancelRequest(clientId, itemId) {
+    const job = downloadQueue.get(itemId) || pausedDownloads.get(itemId) || activeProcesses.get(itemId);
+    if (job && String(job.clientId || job.itemData?.clientId) !== String(clientId)) {
+      throw new Error("Download item not found.");
+    }
     sendMessageToClient(clientId, {
       type: "status",
       message: "Cancellation request received...",
@@ -1916,6 +1955,7 @@ const env = loadEnv(process.env);
       }
       markDirty();
       downloadQueue.delete(itemId); // Remove from queue immediately
+      await downloadState.saveRuntimeState();
       sendMessageToClient(clientId, {
         type: "cancel_confirm",
         message: "Download cancelled from queue.",
@@ -1932,7 +1972,7 @@ const env = loadEnv(process.env);
         await cleanupFilesByTemplate(pausedJob.outputTemplate, itemId);
       }
       pausedDownloads.delete(itemId);
-      savePausedJobs();
+      await downloadState.saveRuntimeState();
       sendMessageToClient(clientId, {
         type: "cancel_confirm",
         message: "Paused download cancelled and removed.",
@@ -1994,6 +2034,7 @@ const env = loadEnv(process.env);
       }
 
       activeProcesses.delete(itemId);
+      await downloadState.saveRuntimeState();
       sendMessageToClient(clientId, {
         type: "cancel_confirm",
         message: "Download cancelled and files cleaned up.",
@@ -2269,6 +2310,7 @@ const env = loadEnv(process.env);
 
     // Reconstruct itemData from job spec
     const itemData = {
+      clientId,
       videoUrl: jobSpec.videoUrl,
       format: jobSpec.format,
       quality: jobSpec.quality,
@@ -2294,12 +2336,17 @@ const env = loadEnv(process.env);
     });
 
     // Re-queue the download using the appropriate processing limit
+    downloadQueue.set(itemId, itemData);
     if (itemData.isPlaylistItem) {
       playlistItemProcessingLimit(async () => {
+        if (downloadQueue.get(itemId) !== itemData) return;
+        downloadQueue.delete(itemId);
         await processVideoWithResume(clientId, itemId, itemData);
       });
     } else {
       singleVideoProcessingLimit(async () => {
+        if (downloadQueue.get(itemId) !== itemData) return;
+        downloadQueue.delete(itemId);
         await processVideoWithResume(clientId, itemId, itemData);
       });
     }
@@ -2515,6 +2562,7 @@ const env = loadEnv(process.env);
         quality,
         format,
       );
+      if (itemProcInfo.cancelled) return;
       currentVideoTitle = videoInfo.title || currentVideoTitle;
       itemProcInfo.videoInfo = videoInfo;
       itemProcInfo.thumbnail = videoInfo.thumbnail; // Store thumbnail for complete message
@@ -2930,7 +2978,7 @@ const env = loadEnv(process.env);
         if (!finalFilePathValue || !fs.existsSync(finalFilePathValue)) {
           logger.error(`[${itemId}] ❌ DOWNLOAD FAILED - File not found`);
           logger.error(`[${itemId}] Expected path: ${finalOutputFilename}`);
-          logger.error(`[${itemId}] Returned path: ${actualPath}`);
+          logger.error(`[${itemId}] Returned path: ${result.actualPath}`);
           logger.error(`[${itemId}] Target directory: ${targetDir}`);
 
           // List files in target directory for debugging
@@ -3032,13 +3080,14 @@ const env = loadEnv(process.env);
           });
 
         if (
-          classification.retryable ||
+          settings.smartRetry !== false && retryAttempt < Number(settings.smartRetryAttempts || 3) &&
+          (classification.retryable ||
           shouldSmartRetry({
             message: errorMsg,
             attempt: retryAttempt,
             maxAttempts: Number(settings.smartRetryAttempts || 3),
             smartRetryEnabled: settings.smartRetry !== false,
-          })
+          }))
         ) {
           const siteFailures = (siteRetryState.get(siteKey) || 0) + 1;
           siteRetryState.set(siteKey, siteFailures);
@@ -3066,6 +3115,7 @@ const env = loadEnv(process.env);
               return;
             }
             const runRetry = async () => {
+              if (downloadQueue.get(itemId) !== nextRetryItemData) return;
               await processVideo(clientId, itemId, nextRetryItemData);
             };
             if (itemData.isPlaylistItem) {
@@ -3084,6 +3134,7 @@ const env = loadEnv(process.env);
           quality,
           source,
           title: currentVideoTitle,
+          thumbnail: itemProcInfo.thumbnail || itemData.thumbnail || null,
           message: classification.userMessage || errorMsg,
           failedAt: new Date().toISOString(),
           attempt: retryAttempt,
@@ -3366,6 +3417,7 @@ const env = loadEnv(process.env);
             quality,
             format,
           );
+          if (itemProcInfo.cancelled || itemProcInfo.paused) return;
           currentVideoTitle = videoInfo.title || currentVideoTitle;
           itemProcInfo.title = currentVideoTitle;
           itemProcInfo.thumbnail = videoInfo.thumbnail; // Store thumbnail for complete message
@@ -3604,48 +3656,23 @@ const env = loadEnv(process.env);
           throw new Error("Output file not found after download");
         }
       } catch (downloadError) {
-        // Check if it was paused (not a real error)
-        if (itemProcInfo.paused) {
-          logger.info(`[${itemId}] Download paused`);
-          return;
-        }
-
-        logger.error(
-          `[${itemId}] Resume download error:`,
-          downloadError.message,
-        );
-        const classification =
-          downloadError.classification ||
-          classifyRuntimeError({
-            hasCookies: downloadError.message?.toLowerCase().includes("cookie"),
-            message: downloadError.message,
-            siteKey: itemData.siteKey || getSiteKeyFromUrl(videoUrl),
-          });
-        sendMessageToClient(clientId, {
-          type: "error",
-          message: classification.userMessage || downloadError.message || "Resume failed",
-          itemId,
-          source,
-        });
+        throw downloadError;
       }
     } catch (error) {
+      if (itemProcInfo.cancelled || itemProcInfo.paused) return;
       logger.error(`[${itemId}] processVideoWithResume error:`, error);
-      const classification =
-        error.classification ||
-        classifyRuntimeError({
-          hasCookies: error.message?.toLowerCase().includes("cookie"),
-          message: error.message,
-          siteKey: itemData.siteKey || getSiteKeyFromUrl(videoUrl),
-        });
-      sendMessageToClient(clientId, {
-        type: "error",
-        message:
-          classification.userMessage ||
-          error.message ||
-          "Resume processing failed",
-        itemId,
-        source,
+      const classification = error.classification || classifyRuntimeError({
+        hasCookies: error.message?.toLowerCase().includes("cookie"),
+        message: error.message,
+        siteKey: itemData.siteKey || getSiteKeyFromUrl(videoUrl),
       });
+      const message = classification.userMessage || error.message || "Resume failed";
+      await storeFailedDownload(itemId, {
+        ...itemData, clientId, title: currentVideoTitle,
+        thumbnail: itemProcInfo.thumbnail || itemData.thumbnail || null,
+        message, failedAt: new Date().toISOString(), playlistAction: "single",
+      });
+      sendMessageToClient(clientId, { type: "error", message, itemId, source });
     } finally {
       activeProcesses.delete(itemId);
     }
@@ -4597,6 +4624,7 @@ const env = loadEnv(process.env);
     getFailedDownloads,
     retryFailedDownload: queueFailedDownloadRetry,
     retryAllFailedDownloads,
+    dismissDownloadItem,
     previewPlaylist,
     logger: logger,
   });

@@ -372,6 +372,7 @@ h6 {
 }
 
 .is-hidden-initial,
+.failed-downloads-toolbar.is-hidden-initial,
 .modal.is-hidden-initial,
 .onboarding-modal.is-hidden-initial {
     display: none;
@@ -629,8 +630,63 @@ body[data-ui-density="compact"] .settings-actions {
 }
 
 .download-links-container.with-top-padding {
-    padding-top: 0.5rem;
+    padding-top: 1.25rem;
 }
+
+.failed-downloads-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex: 0 0 auto;
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.retry-failed-btn,
+.item-control-btn.item-retry-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: auto;
+    height: auto;
+    min-height: 32px;
+    padding: 0.4rem 0.65rem;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    box-shadow: none;
+}
+
+.retry-failed-btn:hover,
+.item-control-btn.item-retry-btn:hover {
+    border-color: var(--primary-color);
+}
+
+.retry-failed-btn:disabled,
+.item-control-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.item-error-details {
+    margin-top: 0.6rem;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+
+.item-error-details summary { cursor: pointer; }
+.item-error-details p { margin: 0.5rem 0 0; line-height: 1.5; }
+.download-item { flex-shrink: 0; }
+.download-item .item-status { overflow-wrap: anywhere; }
 
 .delete-all-bottom-btn {
     display: none;
@@ -642,6 +698,34 @@ body[data-ui-density="compact"] .settings-actions {
 .download-links-container {
     display: flex;
     flex-direction: column;
+    container-type: inline-size;
+}
+
+@container (max-width: 520px) {
+    .download-links-container .download-item {
+        display: grid;
+        grid-template-columns: 96px minmax(0, 1fr);
+        gap: 0.75rem;
+    }
+
+    .download-links-container .item-thumbnail {
+        width: 96px;
+        height: 54px;
+    }
+
+    .download-links-container .item-buttons {
+        grid-column: 2;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        width: auto;
+        min-width: 0;
+        margin-left: 0;
+    }
+
+    .download-links-container .item-control-buttons {
+        width: auto;
+    }
 }
 
 .empty-state {

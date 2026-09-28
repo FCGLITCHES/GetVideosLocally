@@ -69,7 +69,9 @@ function createDownloadState({
 
     clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
-      persistPromise = saveRuntimeState();
+      saveRuntimeState().catch(error => {
+        logger.error("[DownloadState] Background persistence failed:", error);
+      });
     }, 75);
   }
 
@@ -123,7 +125,7 @@ function createDownloadState({
       version: DOWNLOAD_STATE_VERSION,
       activeProcesses: Array.from(state.activeProcesses.entries()).map(
         ([itemId, value]) => serializeActiveItem(itemId, value),
-      ),
+      ).filter(entry => !entry.value.cancelled),
       downloadQueue: Array.from(state.downloadQueue.entries()).map(([itemId, value]) =>
         serializeQueueItem(itemId, value),
       ),
@@ -140,7 +142,7 @@ function createDownloadState({
   }
 
   function restoreInterruptedActiveEntry(itemId, entry) {
-    if (!entry || typeof entry !== "object") {
+    if (!entry || typeof entry !== "object" || entry.cancelled) {
       return;
     }
 
@@ -217,7 +219,13 @@ function createDownloadState({
     await saveNamedMap(failedJobsFile, state.failedDownloads, "FailedJobs");
   }
 
-  async function saveRuntimeState() {
+  function saveRuntimeState() {
+    clearTimeout(persistTimer);
+    persistPromise = persistPromise.catch(() => {}).then(writeRuntimeState);
+    return persistPromise;
+  }
+
+  async function writeRuntimeState() {
     if (!stateFile) {
       await savePausedJobs();
       await saveScheduledJobs();
@@ -234,6 +242,7 @@ function createDownloadState({
       await saveFailedJobs();
     } catch (error) {
       logger.error("[DownloadState] Error saving runtime state:", error);
+      throw error;
     }
   }
 
@@ -282,8 +291,8 @@ function createDownloadState({
         runtimeState.version === DOWNLOAD_STATE_VERSION
       ) {
         for (const entry of runtimeState.downloadQueue || []) {
-          if (entry?.itemId) {
-            state.downloadQueue.set(entry.itemId, entry.value || {});
+          if (entry?.itemId && !entry.value?.cancelled && !entry.value?.isMeta) {
+            restoreInterruptedActiveEntry(entry.itemId, { itemData: entry.value });
           }
         }
 
@@ -301,20 +310,21 @@ function createDownloadState({
 
         for (const entry of runtimeState.failedDownloads || []) {
           if (entry?.itemId) {
+            state.pausedDownloads.delete(entry.itemId);
             state.failedDownloads.set(entry.itemId, entry.value || {});
           }
         }
 
         for (const entry of runtimeState.activeProcesses || []) {
-          if (entry?.itemId) {
+          if (entry?.itemId && !state.failedDownloads.has(entry.itemId) && !state.pausedDownloads.has(entry.itemId)) {
             restoreInterruptedActiveEntry(entry.itemId, entry.value || {});
           }
         }
+      } else {
+        await loadLegacyPausedJobs();
+        await loadLegacyNamedMap(scheduledJobsFile, state.scheduledDownloads);
+        await loadLegacyNamedMap(failedJobsFile, state.failedDownloads);
       }
-
-      await loadLegacyPausedJobs();
-      await loadLegacyNamedMap(scheduledJobsFile, state.scheduledDownloads);
-      await loadLegacyNamedMap(failedJobsFile, state.failedDownloads);
 
       logger.log(
         `[DownloadState] Restored ${state.downloadQueue.size} queued, ${state.pausedDownloads.size} paused, ${state.scheduledDownloads.size} scheduled, ${state.failedDownloads.size} failed downloads`,
