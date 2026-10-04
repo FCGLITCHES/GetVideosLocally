@@ -5,6 +5,7 @@ const {
   resolveDownloadConcurrency,
 } = require("../config/download-config");
 const { readJsonFile, writeJsonAtomic } = require("../utils/json-file");
+const { assertMediaUrl } = require("../utils/media-url");
 
 const CACHE_VERSION = 1;
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -143,6 +144,7 @@ function createMetadataService({
   }
 
   async function getVideoInfo(clientId, videoUrl, itemId) {
+    assertMediaUrl(videoUrl, true);
     await ready;
 
     const cacheKey = videoUrl;
@@ -180,6 +182,7 @@ function createMetadataService({
           title: info.title || "video",
           uploadDate: info.upload_date || null,
           uploader,
+          duration: Number.isFinite(info.duration) ? info.duration : null,
         };
 
         videoInfoCache.set(cacheKey, { data: result, timestamp: Date.now() });

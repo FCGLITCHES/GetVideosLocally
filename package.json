@@ -1,6 +1,6 @@
 {
   "name": "getvideoslocally",
-  "version": "3.2.6",
+  "version": "3.2.7",
   "description": "GetVideosLocally - Desktop app for downloading and converting videos from 1000+ supported sites",
   "main": "electron-main.js",
   "scripts": {
@@ -33,7 +33,7 @@
   "author": "FCGLITCHES",
   "license": "MIT",
   "dependencies": {
-    "adm-zip": "^0.6.0",
+    "adm-zip": "^0.6.1",
     "auto-launch": "^5.0.6",
     "balanced-match": "^1.0.2",
     "concat-map": "^0.0.1",
@@ -49,17 +49,17 @@
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "electron": "42.1.0",
-    "electron-builder": "^26.10.0",
-    "electron-packager": "^17.1.2",
+    "electron": "42.11.9",
+    "electron-builder": "^26.15.3",
     "rcedit": "^4.0.1",
-    "sharp": "^0.34.4",
-    "trim-repeated": "^1.0.0"
+    "sharp": "^0.35.5",
+    "trim-repeated": "^1.0.0",
+    "@electron/packager": "^20.3.0"
   },
   "overrides": {
-    "body-parser": "1.20.6",
+    "body-parser": "1.20.8",
     "minimist": "0.2.4",
     "path-to-regexp": "0.1.13",
-    "qs": "6.15.2"
+    "qs": "6.16.0"
   }
 }

@@ -10,7 +10,7 @@ const execAsync = promisify(exec);
 
 async function getToolVersion(executable) {
   return new Promise((resolve) => {
-    const proc = spawn(executable, ['--version'], { shell: true });
+    const proc = spawn(executable, [executable.toLowerCase().includes('ffmpeg') ? '-version' : '--version'], { windowsHide: true, timeout: 10000 });
     let stdout = '';
     let stderr = '';
 
@@ -35,7 +35,7 @@ async function getToolVersion(executable) {
 
 async function getYtDlpExtractorInfo(executable) {
   return new Promise((resolve) => {
-    const proc = spawn(executable, ['--list-extractors'], { shell: true });
+    const proc = spawn(executable, ['--list-extractors'], { windowsHide: true, timeout: 15000 });
     let stdout = '';
 
     proc.stdout.on('data', (data) => {

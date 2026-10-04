@@ -50,14 +50,31 @@ async function computeSha256(filePath) {
 async function downloadFile(downloadUrl, destinationPath) {
   await new Promise((resolve, reject) => {
     const file = fs.createWriteStream(destinationPath);
+    let activeRequest;
+    let settled = false;
 
     const cleanup = (error) => {
+      if (settled) return;
+      settled = true;
+      activeRequest?.destroy();
       file.destroy();
-      if (error) reject(error);
+      reject(error);
     };
+    file.on("error", cleanup);
+    file.on("finish", () => file.close((error) => {
+      if (error) return cleanup(error);
+      if (!settled) { settled = true; resolve(); }
+    }));
 
     const requestUrl = (currentUrl, redirectCount = 0) => {
-      const request = https.get(currentUrl, (response) => {
+      const parsed = new URL(currentUrl);
+      if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+        cleanup(new Error("FFmpeg updates require an HTTPS URL without credentials"));
+        return;
+      }
+      const request = activeRequest = https.get(parsed, (response) => {
+        response.on("error", cleanup);
+        response.on("aborted", () => cleanup(new Error("FFmpeg download interrupted")));
         if (
           response.statusCode >= 300 &&
           response.statusCode < 400 &&
@@ -68,7 +85,9 @@ async function downloadFile(downloadUrl, destinationPath) {
             cleanup(new Error("Too many redirects while downloading FFmpeg"));
             return;
           }
-          requestUrl(response.headers.location, redirectCount + 1);
+          try {
+            requestUrl(new URL(response.headers.location, parsed), redirectCount + 1);
+          } catch (error) { cleanup(error); }
           return;
         }
 
@@ -81,7 +100,6 @@ async function downloadFile(downloadUrl, destinationPath) {
         }
 
         response.pipe(file);
-        file.on("finish", () => file.close(resolve));
       });
 
       request.on("error", cleanup);
@@ -91,7 +109,7 @@ async function downloadFile(downloadUrl, destinationPath) {
       });
     };
 
-    requestUrl(downloadUrl);
+    try { requestUrl(downloadUrl); } catch (error) { cleanup(error); }
   });
 }
 
@@ -139,8 +157,8 @@ async function installFfmpegFromZip({
     }
 
     const extractedFiles = extractFfmpegBinariesToStage(zipPath, stageDir);
-    if (extractedFiles.length === 0) {
-      return { success: false, error: "No binaries found in archive" };
+    if (!FFMPEG_BINARIES.every(name => extractedFiles.includes(name))) {
+      return { success: false, error: "Archive must contain both FFmpeg and FFprobe" };
     }
 
     for (const baseName of extractedFiles) {
@@ -156,6 +174,7 @@ async function installFfmpegFromZip({
           fs.renameSync(destinationPath, backupPath);
           backups.push({ baseName, backupPath, destinationPath });
         } catch (error) {
+          rollbackInstalledFiles(installedFiles, binDir, backups);
           rollbackBackups(backups);
           return {
             success: false,
@@ -208,6 +227,7 @@ function extractFfmpegBinariesToStage(zipPath, stageDir) {
     const entryName = entry.entryName;
     const baseName = path.basename(entryName);
     if (FFMPEG_BINARIES.includes(baseName) && entryName.includes("/bin/")) {
+      if (extractedFiles.includes(baseName)) throw new Error(`Duplicate binary in archive: ${baseName}`);
       fs.writeFileSync(path.join(stageDir, baseName), entry.getData());
       extractedFiles.push(baseName);
     }

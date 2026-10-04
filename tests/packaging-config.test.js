@@ -8,7 +8,7 @@ const builderConfig = require("../electron-builder.json");
 const packageManifest = require("../package.json");
 const packageLock = require("../package-lock.json");
 
-test("3.2.6 hotfix metadata stays aligned across package and UI boundaries", () => {
+test("3.2.7 hotfix metadata stays aligned across package and UI boundaries", () => {
   const indexHtml = fs.readFileSync(
     path.join(projectRoot, "index.html"),
     "utf8",
@@ -18,13 +18,13 @@ test("3.2.6 hotfix metadata stays aligned across package and UI boundaries", () 
     "utf8",
   );
 
-  assert.equal(packageManifest.version, "3.2.6");
-  assert.equal(packageLock.version, "3.2.6");
-  assert.equal(packageLock.packages[""].version, "3.2.6");
-  assert.match(indexHtml, /data-app-version="3\.2\.6"/);
-  assert.match(rendererScript, /DEFAULT_APP_VERSION = '3\.2\.6'/);
-  assert.match(rendererScript, /Reliable Retry/);
-  assert.match(rendererScript, /Remove Means Remove/);
+  assert.equal(packageManifest.version, "3.2.7");
+  assert.equal(packageLock.version, "3.2.7");
+  assert.equal(packageLock.packages[""].version, "3.2.7");
+  assert.match(indexHtml, /data-app-version="3\.2\.7"/);
+  assert.match(rendererScript, /DEFAULT_APP_VERSION = '3\.2\.7'/);
+  assert.match(rendererScript, /One Cookie File/);
+  assert.match(rendererScript, /Clearer Session Errors/);
   const updatePopupSource = rendererScript.slice(
     rendererScript.indexOf("function showUpdatePopup"),
     rendererScript.indexOf("function dismissUpdate"),
@@ -80,6 +80,16 @@ test("Windows brand icon owns executable, installer, window, and tray surfaces",
   assert.equal(builderConfig.mac.icon, canonicalIcon);
   assert.equal(builderConfig.linux.icon, canonicalIcon);
   assert.match(electronMain, /app\.setAppUserModelId\(APP_USER_MODEL_ID\)/);
+  assert.match(electronMain, /'com\.getvideoslocally\.app\.dev'/);
+  assert.match(electronMain, /app\.on\('browser-window-created'/);
+  assert.match(electronMain, /win\.setAppDetails\(/);
+  assert.match(electronMain, /appIconPath: WINDOWS_BRAND_ICON_PATH/);
+  assert.match(electronMain, /path\.join\(process\.resourcesPath, 'assets', 'Logo1\.ico'\)/);
+  assert.deepEqual(
+    fs.readFileSync(path.join(projectRoot, 'assets', 'Logo1.ico')),
+    fs.readFileSync(path.join(projectRoot, canonicalIcon)),
+  );
+  assert.match(electronMain, /relaunchDisplayName: 'GetVideosLocally'/);
   assert.match(electronMain, /path\.join\(__dirname, 'public', 'Logo1\.ico'\)/);
   assert.match(electronMain, /new Tray\(trayIcon\.resize/);
   assert.equal(

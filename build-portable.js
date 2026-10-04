@@ -123,7 +123,7 @@ try {
 
   const iconPath = path.join(projectDir, "public", "Logo1.ico");
   const packagerCmd = [
-    "npx -y electron-packager",
+    "npx --no-install @electron/packager",
     '".build-staging"',
     `"${productName}"`,
     "--platform=win32",
@@ -131,10 +131,7 @@ try {
     `--out="${distDir}"`,
     `--electron-version=${electronVersion}`,
     "--overwrite",
-    "--asar",
-    '--asarUnpack="node_modules/auto-launch/**"',
-    '--asarUnpack="node_modules/winreg/**"',
-    '--asarUnpack="node_modules/untildify/**"',
+    '--asar.unpackDir="node_modules/{auto-launch,winreg,untildify}"',
     `--icon="${iconPath}"`,
     extraResourceFlags,
   ].join(" ");

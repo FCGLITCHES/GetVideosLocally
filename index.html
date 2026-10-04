@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-app-version="3.2.6">
+<html lang="en" data-app-version="3.2.7">
 
 <head>
     <meta charset="UTF-8">
@@ -14,7 +14,7 @@
     <title>GetVideosLocally - Multi-Site Video Downloader</title>
     <link rel="stylesheet" href="./public/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="/style.css">
-    <link rel="icon" type="image/x-icon" href="/public/Logo1.ico">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=3.2.7">
 
 </head>
 
@@ -35,12 +35,6 @@
             <span class="logo-text">GetVideosLocally</span>
         </div>
         <div class="header-buttons">
-            <!-- Enhanced Mini Widgets -->
-            <div class="header-widget speed-widget">
-                <label for="headerSpeedSlider">Speed:</label>
-                <input type="range" id="headerSpeedSlider" min="0" max="500000" step="1000" value="0">
-                <output id="speedValue">∞</output>
-            </div>
             <div class="header-widget theme-widget">
                 <select id="headerThemeSelect" class="quick-theme-select">
                     <option value="light">Light</option>
@@ -49,18 +43,21 @@
                     <option value="vibrant">Vibrant</option>
                 </select>
             </div>
-            <div class="header-widget download-stats">
-                <div class="stat-item">
-                    <span class="stat-label">Queued:</span>
+            <div class="header-widget download-stats" role="status" aria-label="Download counts">
+                <div class="stat-item stat-queued" title="Queued">
+                    <i class="fas fa-clock stat-icon" aria-hidden="true"></i>
                     <span id="queuedCount" class="stat-value">0</span>
+                    <span class="stat-label">Queued</span>
                 </div>
-                <div class="stat-item">
-                    <span class="stat-label">Downloading:</span>
+                <div class="stat-item stat-downloading" title="Downloading">
+                    <i class="fas fa-arrow-down stat-icon" aria-hidden="true"></i>
                     <span id="downloadingCount" class="stat-value">0</span>
+                    <span class="stat-label">Downloading</span>
                 </div>
-                <div class="stat-item">
-                    <span class="stat-label">Downloaded:</span>
+                <div class="stat-item stat-downloaded" title="Downloaded">
+                    <i class="fas fa-check stat-icon" aria-hidden="true"></i>
                     <span id="downloadedCount" class="stat-value">0</span>
+                    <span class="stat-label">Downloaded</span>
                 </div>
             </div>
             <button id="settingsBtn" class="settings-btn" aria-label="Open settings" title="Open settings">
@@ -351,67 +348,151 @@
         </div>
     </footer>
 
-    <div id="settingsModal" class="modal is-hidden-initial">
+    <div id="settingsModal" class="modal is-hidden-initial" role="dialog" aria-modal="true"
+        aria-labelledby="settingsTitle">
         <div class="modal-content settings-modal">
-            <button id="closeSettingsBtn" class="modal-close-btn" aria-label="Close settings"
-                title="Close settings">&times;</button>
-            <h2><i class="fas fa-cog"></i> Settings</h2>
+            <header class="settings-modal-header">
+                <h2 id="settingsTitle">Settings</h2>
+                <button id="closeSettingsBtn" class="modal-close-btn" aria-label="Close settings"
+                    title="Close settings"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+            </header>
 
-<div class="settings-layout">
-                <!-- Left Column -->
-                <div class="settings-column">
-                    <div class="settings-section">
-                        <h3>Performance</h3>
-                        <div class="setting-item">
-                            <label for="maxSpeed">Download Speed (KB/s):</label>
-                            <div class="speed-input-group">
-                                <input type="number" id="maxSpeed" name="maxSpeed" min="0" value="0"
-                                    class="input-field">
-                                <button id="resetSpeedBtn" class="reset-btn" type="button">∞</button>
+            <div class="settings-shell">
+                <nav class="settings-nav" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+                    <button class="settings-nav-item active" type="button" role="tab" id="settingsTab-general"
+                        aria-controls="settingsPanel-general" aria-selected="true" data-settings-tab="general">
+                        <i class="fas fa-sliders" aria-hidden="true"></i><span>General</span>
+                    </button>
+                    <button class="settings-nav-item" type="button" role="tab" id="settingsTab-downloads"
+                        aria-controls="settingsPanel-downloads" aria-selected="false" tabindex="-1"
+                        data-settings-tab="downloads">
+                        <i class="fas fa-download" aria-hidden="true"></i><span>Downloads</span>
+                    </button>
+                    <button class="settings-nav-item" type="button" role="tab" id="settingsTab-network"
+                        aria-controls="settingsPanel-network" aria-selected="false" tabindex="-1"
+                        data-settings-tab="network">
+                        <i class="fas fa-network-wired" aria-hidden="true"></i><span>Network</span>
+                    </button>
+                    <button class="settings-nav-item" type="button" role="tab" id="settingsTab-advanced"
+                        aria-controls="settingsPanel-advanced" aria-selected="false" tabindex="-1"
+                        data-settings-tab="advanced">
+                        <i class="fas fa-screwdriver-wrench" aria-hidden="true"></i><span>Advanced</span>
+                    </button>
+                </nav>
+
+                <div class="settings-panels">
+                    <!-- General -->
+                    <section id="settingsPanel-general" class="settings-panel" role="tabpanel"
+                        aria-labelledby="settingsTab-general" data-settings-panel="general">
+                        <div class="settings-section">
+                            <h3>Appearance</h3>
+                            <div class="setting-item setting-row">
+                                <label for="themePreset"><span class="setting-label">Theme</span><span
+                                        class="setting-desc">Color scheme for the whole app</span></label>
+                                <select id="themePreset" class="select-field">
+                                    <option value="light">Light</option>
+                                    <option value="dark">Dark</option>
+                                    <option value="minimal">Minimal</option>
+                                    <option value="vibrant">Vibrant</option>
+                                </select>
+                            </div>
+                            <div class="setting-item setting-row">
+                                <label for="uiScale"><span class="setting-label">Text size</span><span
+                                        class="setting-desc">Scale the interface text</span></label>
+                                <div class="scale-input-group">
+                                    <input type="range" id="uiScale" name="uiScale" min="0.6" max="1.5" step="0.1"
+                                        value="1.0" class="scale-slider">
+                                    <output id="uiScaleValue" class="scale-value">100%</output>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="setting-item">
-                            <label for="speedUnitDisplay">Speed Unit:</label>
-                            <select id="speedUnitDisplay" class="select-field">
-                                <option value="MBps">MB/s</option>
-                                <option value="Mbps">Mbps</option>
-                            </select>
+                        <div class="settings-section">
+                            <h3>Notifications</h3>
+                            <div class="setting-item checkbox-group">
+                                <label for="notificationSound"><span class="setting-label">Sound alerts</span><span
+                                        class="setting-desc">Play a sound when a download finishes</span></label>
+                                <input type="checkbox" id="notificationSound" name="notificationSound">
+                            </div>
+                            <div class="setting-item checkbox-group">
+                                <label for="notificationPopup"><span class="setting-label">Desktop
+                                        notifications</span><span class="setting-desc">Show a system notification
+                                        when done</span></label>
+                                <input type="checkbox" id="notificationPopup" name="notificationPopup">
+                            </div>
                         </div>
 
-                        <!-- Diagnostics moved here to prevent misclicks in footer -->
-                        <div class="setting-item checkbox-group">
-                            <input type="checkbox" id="toggleHealthCheckBtn" name="toggleHealthCheckBtn"
-                                aria-controls="setupHealthSection">
-                            <label for="toggleHealthCheckBtn">Diagnostics checker</label>
+                        <div class="settings-section">
+                            <h3>Behavior</h3>
+                            <div class="setting-item checkbox-group">
+                                <label for="keepPcAwake"><span class="setting-label">Keep PC awake during
+                                        downloads</span></label>
+                                <input type="checkbox" id="keepPcAwake" name="keepPcAwake">
+                            </div>
+                            <div class="setting-item checkbox-group">
+                                <label for="startWithWindows"><span class="setting-label">Start with
+                                        Windows</span></label>
+                                <input type="checkbox" id="startWithWindows" name="startWithWindows">
+                            </div>
+                            <div class="setting-item checkbox-group">
+                                <label for="removeCompleted"><span class="setting-label">Auto-remove completed
+                                        downloads</span><span class="setting-desc">Clear finished items from the
+                                        queue</span></label>
+                                <input type="checkbox" id="removeCompleted" name="removeCompleted">
+                            </div>
+                            <div class="setting-item checkbox-group">
+                                <label for="skipDeleteConfirmation"><span class="setting-label">Skip
+                                        confirmations</span><span class="setting-desc">Delete without asking
+                                        first</span></label>
+                                <input type="checkbox" id="skipDeleteConfirmation" name="skipDeleteConfirmation">
+                            </div>
                         </div>
-                        <div class="setting-item">
-                            <button id="generateDiagnosticsBtn" class="action-btn secondary settings-full-width-btn">
-                                <i class="fas fa-bug"></i> Generate Diagnostics Bundle
-                            </button>
-                        </div>
-                    </div>
+                    </section>
 
-                    <div class="settings-section">
-                        <h3>Download Options</h3>
-                        <div class="setting-item checkbox-group">
-                            <input type="checkbox" id="numerateFiles" name="numerateFiles">
-                            <label for="numerateFiles">Number playlist files</label>
+                    <!-- Downloads -->
+                    <section id="settingsPanel-downloads" class="settings-panel" role="tabpanel"
+                        aria-labelledby="settingsTab-downloads" data-settings-panel="downloads" hidden>
+                        <div class="settings-section folder-section">
+                            <h3>Download location</h3>
+                            <div class="setting-item">
+                                <input type="text" id="downloadFolder" class="input-field folder-input" readonly
+                                    placeholder="GetVideosLocally downloads folder" aria-label="Download folder" />
+                            </div>
+                            <div class="folder-actions">
+                                <button id="chooseFolderBtn" class="action-btn secondary" type="button">
+                                    <i class="fas fa-folder-open"></i> Choose
+                                </button>
+                                <button id="openFolderBtn" class="action-btn secondary" type="button">
+                                    <i class="fas fa-arrow-up-right-from-square"></i> Open
+                                </button>
+                                <button id="defaultFolderBtn" class="action-btn ghost" type="button">
+                                    <i class="fas fa-rotate-left"></i> Reset to default
+                                </button>
+                            </div>
                         </div>
 
-                        <div class="setting-item checkbox-group">
-                            <input type="checkbox" id="skipDuplicates" name="skipDuplicates">
-                            <label for="skipDuplicates">Skip duplicates</label>
-                        </div>
-
-                        <div class="setting-item setting-item-with-help">
-                            <div class="checkbox-group">
+                        <div class="settings-section">
+                            <h3>Files</h3>
+                            <div class="setting-item checkbox-group">
+                                <label for="numerateFiles"><span class="setting-label">Number playlist
+                                        files</span><span class="setting-desc">Prefix files with their playlist
+                                        position</span></label>
+                                <input type="checkbox" id="numerateFiles" name="numerateFiles">
+                            </div>
+                            <div class="setting-item checkbox-group">
+                                <label for="skipDuplicates"><span class="setting-label">Skip
+                                        duplicates</span><span class="setting-desc">Don't download files you
+                                        already have</span></label>
+                                <input type="checkbox" id="skipDuplicates" name="skipDuplicates">
+                            </div>
+                            <div class="setting-item setting-item-with-help checkbox-group">
+                                <label for="preferHdr"><span class="setting-label">Prefer HDR
+                                        video</span></label>
                                 <input type="checkbox" id="preferHdr" name="preferHdr">
-                                <label for="preferHdr">Prefer HDR video</label>
                             </div>
                         </div>
 
-                        <div id="subtitleSettingsGroup" class="subtitle-settings-group">
+                        <div id="subtitleSettingsGroup" class="settings-section subtitle-settings-group">
                             <div class="settings-subsection-heading">
                                 <i class="fas fa-closed-captioning" aria-hidden="true"></i>
                                 <span>
@@ -425,159 +506,156 @@
                                     <option value="separate">Download as separate files</option>
                                 </select>
                             </div>
-                            <div id="subtitleLanguagesGroup" class="setting-item is-hidden-initial">
-                                <label for="subtitleLanguages">Subtitle languages:</label>
+                            <div id="subtitleLanguagesGroup" class="setting-item setting-row is-hidden-initial">
+                                <label for="subtitleLanguages"><span class="setting-label">Languages</span><span
+                                        class="setting-desc">Comma-separated, e.g. en.*,en</span></label>
                                 <input type="text" id="subtitleLanguages" class="input-field"
                                     placeholder="en.*,en">
                             </div>
                             <div id="autoCaptionsGroup" class="setting-item checkbox-group is-hidden-initial">
+                                <label for="includeAutoCaptions"><span class="setting-label">Allow auto-generated
+                                        captions as fallback</span></label>
                                 <input type="checkbox" id="includeAutoCaptions" name="includeAutoCaptions">
-                                <label for="includeAutoCaptions">Allow auto-generated captions as fallback</label>
-                            </div>
-                        </div>
-                        <div class="setting-item playback-tip">
-                            <small>💡 Tip: For best playback with Opus audio, we recommend
-                                <a href="https://mpc-hc.org/" target="_blank" rel="noopener noreferrer" class="tip-link-bold">Media Player
-                                    Classic</a>.
-                            </small>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right Column -->
-                <div class="settings-column">
-                    <div class="settings-section">
-                        <h3>Appearance</h3>
-                        <div class="setting-item">
-                            <label for="themePreset">Theme:</label>
-                            <select id="themePreset" class="select-field">
-                                <option value="light">Light</option>
-                                <option value="dark">Dark</option>
-                                <option value="minimal">Minimal</option>
-                                <option value="vibrant">Vibrant</option>
-                            </select>
-                        </div>
-
-                        <!-- Add Text Size setting -->
-                        <div class="setting-item">
-                            <label for="uiScale">Text Size:</label>
-                            <div class="scale-input-group">
-                                <input type="range" id="uiScale" name="uiScale" min="0.6" max="1.5" step="0.1"
-                                    value="1.0" class="scale-slider">
-                                <output id="uiScaleValue" class="scale-value">100%</output>
                             </div>
                         </div>
 
-                    </div>
+                        <div class="settings-section">
+                            <h3>Speed</h3>
+                            <div class="setting-item setting-row">
+                                <label for="maxSpeed"><span class="setting-label">Speed limit (KB/s)</span><span
+                                        class="setting-desc">0 means unlimited</span></label>
+                                <div class="speed-input-group">
+                                    <input type="number" id="maxSpeed" name="maxSpeed" min="0" value="0"
+                                        class="input-field">
+                                    <button id="resetSpeedBtn" class="reset-btn" type="button"
+                                        title="Remove speed limit" aria-label="Remove speed limit">∞</button>
+                                </div>
+                            </div>
+                            <div class="setting-item setting-row">
+                                <label for="speedUnitDisplay"><span class="setting-label">Speed
+                                        unit</span></label>
+                                <select id="speedUnitDisplay" class="select-field">
+                                    <option value="MBps">MB/s</option>
+                                    <option value="Mbps">Mbps</option>
+                                </select>
+                            </div>
+                            <p class="setting-item playback-tip">
+                                <i class="fas fa-lightbulb" aria-hidden="true"></i>
+                                <small>For best playback with Opus audio, we recommend
+                                    <a href="https://mpc-hc.org/" target="_blank" rel="noopener noreferrer"
+                                        class="tip-link-bold">Media Player Classic</a>.</small>
+                            </p>
+                        </div>
+                    </section>
 
-                    <div class="settings-section">
-                        <h3>Notifications</h3>
-                        <div class="setting-item checkbox-group">
-                            <input type="checkbox" id="notificationSound" name="notificationSound">
-                            <label for="notificationSound">Sound alerts</label>
+                    <!-- Network -->
+                    <section id="settingsPanel-network" class="settings-panel" role="tabpanel"
+                        aria-labelledby="settingsTab-network" data-settings-panel="network" hidden>
+                        <div class="settings-section">
+                            <h3>Network &amp; access</h3>
+                            <div class="setting-item checkbox-group settings-hover-help-wrap">
+                                <label for="lanAccess"><span class="setting-label">Enable LAN discovery</span></label>
+                                <button class="settings-help-trigger" type="button" aria-label="About LAN discovery"
+                                    aria-describedby="lanAccessHelp">
+                                    <i class="fas fa-circle-info" aria-hidden="true"></i>
+                                </button>
+                                <p id="lanAccessHelp" class="settings-hover-help" role="tooltip">Allows other devices on
+                                    your local network to connect to GetVideosLocally. Adds a Windows Firewall rule for the
+                                    application.</p>
+                                <input type="checkbox" id="lanAccess" name="lanAccess">
+                            </div>
+                        </div>
+                        <div class="settings-section">
+                            <h3>Sign-in cookies</h3>
+                            <div class="setting-item setting-row">
+                                <span class="setting-row-copy"><span class="setting-label">Browser
+                                        cookies</span><span class="setting-desc">Import cookies to download
+                                        age-restricted or members-only videos</span></span>
+                                <button id="importCookiesBtn" class="action-btn secondary" type="button">
+                                    <i class="fas fa-cookie-bite"></i> Import
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Advanced -->
+                    <section id="settingsPanel-advanced" class="settings-panel" role="tabpanel"
+                        aria-labelledby="settingsTab-advanced" data-settings-panel="advanced" hidden>
+                        <div class="settings-section">
+                            <h3>Tools</h3>
+                            <div class="setting-item setting-row">
+                                <span class="setting-row-copy"><span class="setting-label">yt-dlp &amp;
+                                        FFmpeg</span><span class="setting-desc">Check for and install the latest
+                                        tool versions</span></span>
+                                <button id="updateToolsBtn" class="action-btn secondary" type="button">
+                                    <i class="fas fa-arrows-rotate"></i> Update tools
+                                </button>
+                            </div>
+                            <div id="updateToolsStatus" class="status-message with-margin is-hidden-initial"></div>
+                            <div class="setting-item setting-row">
+                                <span class="setting-row-copy"><span class="setting-label">Setup guide</span><span
+                                        class="setting-desc">Run the first-launch walkthrough again</span></span>
+                                <button id="openTutorialBtn" class="action-btn secondary" type="button">
+                                    <i class="fas fa-graduation-cap"></i> Open guide
+                                </button>
+                            </div>
                         </div>
 
-                        <div class="setting-item checkbox-group">
-                            <input type="checkbox" id="notificationPopup" name="notificationPopup">
-                            <label for="notificationPopup">Desktop notifications</label>
+                        <div class="settings-section">
+                            <h3>Diagnostics</h3>
+                            <div class="setting-item checkbox-group">
+                                <label for="toggleHealthCheckBtn"><span class="setting-label">Diagnostics
+                                        checker</span><span class="setting-desc">Show the setup health
+                                        check</span></label>
+                                <input type="checkbox" id="toggleHealthCheckBtn" name="toggleHealthCheckBtn"
+                                    aria-controls="setupHealthSection">
+                            </div>
+                            <div class="setting-item checkbox-group">
+                                <label for="usageStats"><span class="setting-label">Share anonymous usage
+                                        statistics</span><span class="setting-desc">App version, launches and
+                                        whether downloads worked. Never links, titles or files.
+                                        <a href="https://getvideoslocally.com/privacy" target="_blank"
+                                            rel="noopener noreferrer">Privacy</a></span></label>
+                                <input type="checkbox" id="usageStats" name="usageStats">
+                            </div>
+                            <div class="setting-item setting-row">
+                                <span class="setting-row-copy"><span class="setting-label">Diagnostics
+                                        bundle</span><span class="setting-desc">Collect logs to attach to a bug
+                                        report</span></span>
+                                <button id="generateDiagnosticsBtn" class="action-btn secondary settings-full-width-btn"
+                                    type="button">
+                                    <i class="fas fa-bug"></i> Generate
+                                </button>
+                            </div>
                         </div>
 
-                        <div class="setting-item checkbox-group">
-                            <input type="checkbox" id="keepPcAwake" name="keepPcAwake">
-                            <label for="keepPcAwake">Keep PC awake during downloads</label>
+                        <div id="setupHealthSection" class="settings-section setup-health-section is-hidden-initial"
+                            aria-live="polite">
+                            <div class="setup-health-section-header">
+                                <div>
+                                    <h3>Setup health check</h3>
+                                    <p class="setup-health-section-copy">Checks tools, cookies helper, download folder
+                                        access, and network status only when you open it.</p>
+                                </div>
+                                <button id="runHealthCheckBtn" class="action-btn secondary" type="button">
+                                    <i class="fas fa-arrows-rotate"></i> Run check
+                                </button>
+                            </div>
+                            <p id="setupHealthSummary" class="setup-health-summary">Check your local setup before you
+                                start downloading.</p>
+                            <p id="setupHealthTimestamp" class="setup-health-timestamp"></p>
+                            <div id="setupHealthList" class="setup-health-list"></div>
                         </div>
-
-
-                        <div class="setting-item checkbox-group">
-                            <input type="checkbox" id="startWithWindows" name="startWithWindows">
-                            <label for="startWithWindows">Start GetVideosLocally with Windows</label>
-                        </div>
-
-                        <div class="setting-item checkbox-group">
-                            <input type="checkbox" id="removeCompleted" name="removeCompleted">
-                            <label for="removeCompleted">Auto-remove completed</label>
-                        </div>
-
-                        <div class="setting-item checkbox-group">
-                            <input type="checkbox" id="skipDeleteConfirmation" name="skipDeleteConfirmation">
-                            <label for="skipDeleteConfirmation">Skip confirmations</label>
-                        </div>
-
-                        <div class="setting-item checkbox-group telemetry-setting">
-                            <input type="checkbox" id="errorTelemetry" name="errorTelemetry">
-                            <label for="errorTelemetry">Help improve app quality (opt-in error reporting)</label>
-                        </div>
-                    </div>
-
-                    <div class="settings-section">
-                        <h3>Network & Access</h3>
-                        <div class="setting-item checkbox-group settings-hover-help-wrap">
-                            <input type="checkbox" id="lanAccess" name="lanAccess">
-                            <label for="lanAccess">Enable LAN discovery</label>
-                            <button class="settings-help-trigger" type="button" aria-label="About LAN discovery"
-                                aria-describedby="lanAccessHelp">
-                                <i class="fas fa-circle-info" aria-hidden="true"></i>
-                            </button>
-                            <p id="lanAccessHelp" class="settings-hover-help" role="tooltip">Allows other devices on
-                                your local network to connect to GetVideosLocally. Adds a Windows Firewall rule for the
-                                application.</p>
-                        </div>
-                    </div>
-
+                    </section>
                 </div>
             </div>
 
-            <!-- Download Folder Section (Full Width) -->
-            <div class="settings-section folder-section">
-                <h3>Download Location</h3>
-                <div class="setting-item">
-                    <input type="text" id="downloadFolder" class="input-field folder-input" readonly
-                        placeholder="GetVideosLocally downloads folder" />
-                </div>
-                <div class="folder-actions">
-                    <button id="defaultFolderBtn" class="action-btn" type="button">
-                        <i class="fas fa-home"></i> Default
-                    </button>
-                    <button id="chooseFolderBtn" class="action-btn" type="button">
-                        <i class="fas fa-folder-open"></i> Choose
-                    </button>
-                    <button id="openFolderBtn" class="action-btn" type="button">
-                        <i class="fas fa-external-link-alt"></i> Open
-                    </button>
-                </div>
-            </div>
-
-            <div id="setupHealthSection" class="settings-section setup-health-section is-hidden-initial" aria-live="polite">
-                <div class="setup-health-section-header">
-                    <div>
-                        <h3>Setup Health Check</h3>
-                        <p class="setup-health-section-copy">Checks tools, cookies helper, download folder access, and network status only when you open it.</p>
-                    </div>
-                    <button id="runHealthCheckBtn" class="action-btn secondary" type="button">
-                        <i class="fas fa-arrows-rotate"></i> Run Check
-                    </button>
-                </div>
-                <p id="setupHealthSummary" class="setup-health-summary">Check your local setup before you start downloading.</p>
-                <p id="setupHealthTimestamp" class="setup-health-timestamp"></p>
-                <div id="setupHealthList" class="setup-health-list"></div>
-                <div id="updateToolsStatus" class="status-message with-margin is-hidden-initial"></div>
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="settings-actions">
-                <button id="openTutorialBtn" class="action-btn secondary">
-                    <i class="fas fa-graduation-cap"></i> Setup Guide
+            <footer class="settings-actions">
+                <span class="settings-actions-hint">Changes apply when you save.</span>
+                <button id="saveSettingsBtn" class="action-btn primary" type="button">
+                    <i class="fas fa-check"></i> Save settings
                 </button>
-                <button id="importCookiesBtn" class="action-btn secondary">
-                    <i class="fas fa-cookie-bite"></i> Import Cookies
-                </button>
-                <button id="updateToolsBtn" class="action-btn secondary">
-                    <i class="fas fa-download"></i> Update Tools
-                </button>
-                <button id="saveSettingsBtn" class="action-btn primary">
-                    <i class="fas fa-save"></i> Save Settings
-                </button>
-            </div>
+            </footer>
         </div>
     </div>
 
@@ -678,11 +756,9 @@
                 Select the videos you want to queue before downloading the playlist.
             </p>
             <div class="playlist-selection-actions">
-                <button id="playlistSelectAllBtn" class="action-btn secondary" type="button">
-                    <i class="fas fa-check-double"></i> Select All
-                </button>
-                <button id="playlistClearSelectionBtn" class="action-btn secondary" type="button">
-                    <i class="fas fa-eraser"></i> Clear
+                <span id="playlistSelectionCount" class="playlist-selection-count" aria-live="polite">0 selected</span>
+                <button id="playlistSelectAllBtn" class="action-btn secondary playlist-toggle-all-btn" type="button">
+                    <i class="fas fa-square-minus" aria-hidden="true"></i> <span>Deselect all</span>
                 </button>
             </div>
             <div id="playlistSelectionList" class="playlist-selection-list"></div>

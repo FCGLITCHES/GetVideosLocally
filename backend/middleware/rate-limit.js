@@ -9,7 +9,7 @@
 /**
  * Create a rate limiting Express middleware.
  *
- * Tracks request counts per client (identified by IP address or X-Client-ID header)
+ * Tracks request counts per client IP address
  * within a sliding time window. Sets standard rate-limit response headers and
  * returns 429 when the limit is exceeded.
  *
@@ -39,7 +39,7 @@ function createRateLimiter(options = {}) {
     const now = Date.now();
     const ip =
       req.ip || (req.connection && req.connection.remoteAddress) || "unknown";
-    const clientId = req.headers["x-client-id"] || ip;
+    const clientId = ip;
 
     let entry = clients.get(clientId);
 
@@ -61,6 +61,7 @@ function createRateLimiter(options = {}) {
     );
 
     if (entry.count > maxRequests) {
+      res.setHeader("Retry-After", String(resetTimeSeconds));
       res.status(429).json({
         error: "Too many requests",
         retryAfter: resetTimeSeconds,

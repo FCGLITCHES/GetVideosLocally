@@ -5,6 +5,7 @@ const {
   getSiteDownloadProfile,
 } = require("../config/download-config");
 const { readJsonFile, writeJsonAtomic } = require("../utils/json-file");
+const { assertMediaUrl } = require("../utils/media-url");
 
 const CACHE_VERSION = 1;
 
@@ -132,6 +133,7 @@ function createPlaylistService({
   }
 
   async function probeCollection(clientId, playlistUrl, playlistMetaId) {
+    assertMediaUrl(playlistUrl);
     await ready;
 
     const cached = getCachedProbe(playlistUrl);
@@ -199,7 +201,7 @@ function createPlaylistService({
     const itemsArgs = [
       "--flat-playlist",
       "--print",
-      "%(id)s\t%(title)s",
+      "%(id)s\t%(title)s\t%(webpage_url,url)s\t%(thumbnails.-1.url,thumbnail|)s\t%(duration_string|)s",
       playlistUrl,
     ];
     const titleArgs = ["--flat-playlist", "--print", "%(playlist_title)s", playlistUrl];
@@ -228,6 +230,10 @@ function createPlaylistService({
       return {
         id: parts[0],
         title: parts[1] || "Untitled Video",
+        url: /^https?:\/\//i.test(parts[2] || "") ? parts[2] :
+          (detectSiteKeyFromUrl(playlistUrl) === "youtube" ? `https://www.youtube.com/watch?v=${encodeURIComponent(parts[0])}` : null),
+        thumbnail: /^https:\/\//i.test(parts[3] || "") ? parts[3].trim() : null,
+        duration: (parts[4] || "").trim() || null,
       };
     });
 
@@ -252,6 +258,7 @@ function createPlaylistService({
   }
 
   async function fetchPlaylistContext(clientId, playlistUrl, playlistMetaId) {
+    assertMediaUrl(playlistUrl);
     await ready;
 
     const cached = getCachedContext(playlistUrl);

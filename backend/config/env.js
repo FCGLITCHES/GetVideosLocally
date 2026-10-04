@@ -5,7 +5,7 @@ function parsePort(rawPort, logger = console) {
     return 9875;
   }
 
-  const parsedPort = Number.parseInt(String(rawPort), 10);
+  const parsedPort = /^\d+$/.test(String(rawPort)) ? Number(rawPort) : NaN;
   if (Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535) {
     return parsedPort;
   }
@@ -32,7 +32,6 @@ function loadEnv(rawEnv = process.env, logger = console) {
       rawEnv.FFMPEG_PATH || rawEnv.FFMPEGPATH,
     ),
     NODE_BINARY: normalizeOptionalString(rawEnv.NODE_BINARY),
-    COOKIES_DIR: normalizeOptionalString(rawEnv.COOKIES_DIR),
     USER_DATA_PATH: normalizeOptionalString(rawEnv.USER_DATA_PATH),
     RESEND_API_KEY: normalizeOptionalString(rawEnv.RESEND_API_KEY),
     SUPPORT_EMAIL: normalizeOptionalString(rawEnv.SUPPORT_EMAIL),

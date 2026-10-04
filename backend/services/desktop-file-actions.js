@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const path = require("path");
 const { validateDownloadPath } = require("../utils/path-validator");
 
 function createDesktopFileActions({ shell }) {
@@ -32,6 +33,9 @@ function createDesktopFileActions({ shell }) {
 
     if (!pathStats.isFile()) {
       return { success: false, error: "Path is not a file" };
+    }
+    if (![".mp4", ".mkv", ".mov", ".webm", ".avi", ".flv", ".3gp", ".mp3", ".wav", ".m4a", ".opus", ".flac", ".ogg", ".aac"].includes(path.extname(resolvedPath).toLowerCase())) {
+      return { success: false, error: "Only video and audio files can be played." };
     }
 
     const shellError = await shell.openPath(resolvedPath);

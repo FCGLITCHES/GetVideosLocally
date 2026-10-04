@@ -3,6 +3,7 @@
 const os = require("os");
 const path = require("path");
 const { Resend } = require("resend");
+const { assertMediaUrl } = require("../utils/media-url");
 
 function registerApiRoutes(
   app,
@@ -25,11 +26,43 @@ function registerApiRoutes(
     retryAllFailedDownloads,
     dismissDownloadItem,
     previewPlaylist,
+    usageTelemetry = null,
     logger = require("../utils/logger").logger,
   },
 ) {
+  if (usageTelemetry) {
+    // Opt-in anonymous usage statistics. Off by default; turning it off deletes
+    // the local queue and install ID immediately.
+    app.get("/api/usage-stats", (req, res) => {
+      res.json(usageTelemetry.getStatus());
+    });
+
+    app.post("/api/usage-stats", async (req, res) => {
+      const enabled = req.body?.enabled;
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ error: "enabled must be true or false." });
+      }
+      try {
+        await usageTelemetry.setEnabled(enabled);
+        res.json(usageTelemetry.getStatus());
+      } catch (error) {
+        logger.error("[UsageStats] Failed to update setting:", error.message);
+        res.status(500).json({ error: "Could not update the usage statistics setting." });
+      }
+    });
+  }
+
   app.post("/api/send-support-email", async (req, res) => {
-    const { email, subject, message, type } = req.body;
+    const { email, subject = "No Subject", message, type = "Support", clientId = "Unknown" } = req.body || {};
+    const fields = [[email, 254], [subject, 200], [message, 20000], [type, 80], [clientId, 128]];
+    if (fields.some(([value, limit]) => typeof value !== "string" || value.length > limit) ||
+        !/^[^\s<>"'@]+@[^\s<>"'@]+\.[^\s<>"'@]+$/.test(email) || !message.trim() ||
+        /[\r\n]/.test(subject + type)) {
+      return res.status(400).json({ error: "Enter a valid email and message within the supported limits." });
+    }
+    const escapeHtml = value => value.replace(/[&<>"']/g, char => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[char]);
 
     if (!process.env.RESEND_API_KEY) {
       return res
@@ -44,7 +77,7 @@ function registerApiRoutes(
         from: "GetVideosLocally <onboarding@resend.dev>",
         to: [process.env.SUPPORT_EMAIL || "youben2025@gmail.com"],
         subject: `[${type || "Support"}] ${subject || "No Subject"}`,
-        reply_to: email,
+        replyTo: email,
         html: `
                     <!DOCTYPE html>
                     <html>
@@ -68,29 +101,29 @@ function registerApiRoutes(
                                                     <tr>
                                                         <td style="padding-bottom: 8px; color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Type</td>
                                                         <td align="right" style="padding-bottom: 8px;">
-                                                            <span style="background-color: rgba(214, 0, 23, 0.2); color: #ff4d5e; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1px solid rgba(214, 0, 23, 0.3);">${type || "Support"}</span>
+                                                            <span style="background-color: rgba(214, 0, 23, 0.2); color: #ff4d5e; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1px solid rgba(214, 0, 23, 0.3);">${escapeHtml(type || "Support")}</span>
                                                         </td>
                                                     </tr>
                                                     <tr>
                                                         <td style="color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">From</td>
                                                         <td align="right" style="color: #ffffff; font-size: 14px; font-weight: 500;">
-                                                            ${email}
+                                                            ${escapeHtml(email)}
                                                         </td>
                                                     </tr>
                                                 </table>
                                             </div>
                                             <div style="padding: 30px 25px;">
-                                                <div style="font-size: 15px; line-height: 1.6; color: #e2e8f0; white-space: pre-wrap;">${message}</div>
+                                                <div style="font-size: 15px; line-height: 1.6; color: #e2e8f0; white-space: pre-wrap;">${escapeHtml(message)}</div>
                                             </div>
                                             <div style="padding: 20px 25px; background-color: #161725; border-top: 1px solid #2d3748; text-align: center;">
-                                                <a href="mailto:${email}?subject=${encodeURIComponent(`Re: [${type || "Support"}] ${subject || "No Subject"}`)}&body=${encodeURIComponent(`Hi,\n\nThanks for contacting GetVideosLocally Support.\n\n[YOUR RESPONSE HERE]\n\nBest regards,\nGetVideosLocally Team`)}" style="display: inline-block; background-color: #d60017; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; transition: all 0.2s; box-shadow: 0 4px 12px rgba(214, 0, 23, 0.3);">
+                                                <a href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(`Re: [${type || "Support"}] ${subject || "No Subject"}`)}&body=${encodeURIComponent(`Hi,\n\nThanks for contacting GetVideosLocally Support.\n\n[YOUR RESPONSE HERE]\n\nBest regards,\nGetVideosLocally Team`)}" style="display: inline-block; background-color: #d60017; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; transition: all 0.2s; box-shadow: 0 4px 12px rgba(214, 0, 23, 0.3);">
                                                     Reply to User
                                                 </a>
                                             </div>
                                         </div>
                                         <div style="text-align: center; margin-top: 30px;">
                                             <p style="color: #475569; font-size: 12px; margin: 0;">
-                                                Client ID: <span style="font-family: monospace; background: #1a1b2e; padding: 2px 6px; border-radius: 4px;">${req.body.clientId || "Unknown"}</span>
+                                                Client ID: <span style="font-family: monospace; background: #1a1b2e; padding: 2px 6px; border-radius: 4px;">${escapeHtml(clientId)}</span>
                                             </p>
                                         </div>
                                     </div>
@@ -102,8 +135,12 @@ function registerApiRoutes(
                 `,
       });
 
-      logger.log("Email sent successfully:", data);
-      res.status(200).json({ success: true, id: data.id });
+      if (data.error) {
+        logger.error("Email provider rejected support request:", data.error);
+        return res.status(502).json({ error: "Email delivery failed. Please try again later." });
+      }
+      logger.log("Email sent successfully:", data.data?.id);
+      res.status(200).json({ success: true, id: data.data?.id });
     } catch (error) {
       logger.error("Failed to send email:", error);
       res.status(500).json({ error: error.message || "Failed to send email" });
@@ -114,6 +151,9 @@ function registerApiRoutes(
     const { url: videoUrl, clientId, source = "video" } = req.body;
     if (!videoUrl || !clientId) {
       return res.status(400).json({ error: "URL and Client ID are required." });
+    }
+    try { assertMediaUrl(videoUrl); } catch (error) {
+      return res.status(400).json({ error: error.message });
     }
 
     const tempItemId = `info_${source}_${Date.now()}`;
@@ -139,6 +179,9 @@ function registerApiRoutes(
       return res
         .status(400)
         .json({ error: "Playlist URL and clientId are required." });
+    }
+    try { assertMediaUrl(playlistUrl); } catch (error) {
+      return res.status(400).json({ error: error.message });
     }
 
     try {
@@ -344,9 +387,7 @@ function registerApiRoutes(
   app.post("/force-update-tools", async (req, res) => {
     try {
       logger.log("🔄 Force update request received");
-      setLastUpdateCheck("ytdlp");
-      setLastUpdateCheck("ffmpeg");
-      const result = await checkAndUpdateTools();
+      const result = await checkAndUpdateTools(true);
       res.json(result);
     } catch (error) {
       logger.error("❌ Error in force update endpoint:", error);
@@ -356,7 +397,7 @@ function registerApiRoutes(
 
   app.get("/diagnostics", async (req, res) => {
     try {
-      const packageJson = require(path.join(process.cwd(), "package.json"));
+      const packageJson = require("../../package.json");
       const diagnostics = {
         timestamp: new Date().toISOString(),
         application: {

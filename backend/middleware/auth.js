@@ -36,19 +36,13 @@ function createAuthMiddleware(token) {
     "/index.html",
     "/script.js",
     "/style.css",
+    "/favicon.ico",
     "/public/content-filter-client.js",
     "/public/local-api-auth.js",
   ]);
-  const publicPrefixes = ["/public/", "/assets/", "/downloads/"];
+  const publicPrefixes = ["/public/", "/assets/"];
 
   return function authMiddleware(req, res, next) {
-    if (
-      req.headers.upgrade &&
-      String(req.headers.upgrade).toLowerCase() === "websocket"
-    ) {
-      return next();
-    }
-
     if (req.method === "GET") {
       if (publicPaths.has(req.path)) {
         return next();

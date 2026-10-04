@@ -20,6 +20,9 @@ const os = require("os");
 const { promisify } = require("util");
 const globAsync = promisify(require("glob"));
 const { loadEnv } = require("./backend/config/env");
+const { isLocalOrigin, createLocalRequestGuard } = require("./backend/middleware/local-origin");
+const { assertMediaUrl } = require("./backend/utils/media-url");
+const { getCookiesFilePath, isValidCookiesText } = require("./backend/utils/cookie-storage");
 const {
   detectSiteKeyFromUrl,
   getSiteDownloadProfile,
@@ -43,6 +46,10 @@ const {
   classifyRuntimeError,
   createClassifiedError,
 } = require("./backend/services/error-classifier");
+const {
+  createUsageTelemetry,
+  fileSize: usageTelemetryFileSize,
+} = require("./backend/services/usage-telemetry");
 const {
   createSiteRequestGuard,
 } = require("./backend/services/site-request-guard");
@@ -132,6 +139,22 @@ const env = loadEnv(process.env);
   const ffmpegChecksums = loadFfmpegChecksumManifest(
     path.join(__dirname, "ffmpeg-checksums.json"),
     logger,
+  );
+
+  // Opt-in anonymous usage statistics (off by default; see usage-telemetry.js).
+  const usageTelemetry = createUsageTelemetry({
+    userDataPath: writableDataRoot,
+    appVersion: (() => {
+      try {
+        return require("./package.json").version;
+      } catch (_) {
+        return null;
+      }
+    })(),
+    logger,
+  });
+  usageTelemetry.init().catch((error) =>
+    logger.warn("[usage-telemetry] init failed:", error.message),
   );
 
   const PAUSED_JOBS_FILE = path.join(writableDataRoot, "paused_jobs.json");
@@ -485,9 +508,9 @@ const env = loadEnv(process.env);
       return await new Promise((resolve) => {
         logger.info(`🔍 Getting version for: ${executable}`);
 
-        const versionProc = spawn(executable, ["--version"], {
+        const versionProc = spawn(executable, [executable.toLowerCase().includes("ffmpeg") ? "-version" : "--version"], {
           stdio: ["ignore", "pipe", "pipe"],
-          timeout: 10000,
+          timeout: 30000,
         });
 
         let stdout = "";
@@ -806,7 +829,16 @@ const env = loadEnv(process.env);
       if (type === "download_request") {
         await handleDownloadRequest(clientId, messageData);
       } else if (type === "cancel" && itemId) {
+        const cancelledJobs = collectCancellableJobsForTelemetry(itemId);
         await handleCancelRequest(clientId, itemId);
+        for (const job of cancelledJobs) {
+          usageTelemetry.recordDownloadFinished({
+            result: "cancelled",
+            url: job.videoUrl,
+            format: job.format,
+            isPlaylistItem: job.isPlaylistItem === true,
+          });
+        }
       } else if (type === "pause" && itemId) {
         await handlePauseRequest(clientId, itemId);
       } else if (type === "resume" && itemId) {
@@ -979,13 +1011,17 @@ const env = loadEnv(process.env);
       throw new Error("Invalid scheduled time.");
     }
 
-    const delayMs = Math.max(0, scheduledTimeMs - Date.now());
+    const delayMs = Math.min(2147483647, Math.max(0, scheduledTimeMs - Date.now()));
     const existingTimer = scheduledDownloadTimers.get(scheduleId);
     if (existingTimer) {
       clearTimeout(existingTimer);
     }
 
     const timer = setTimeout(() => {
+      if (scheduledTimeMs > Date.now()) {
+        queueScheduledTimer(scheduleId, scheduledFor);
+        return;
+      }
       scheduleDownloadExecution(scheduleId).catch((error) => {
         logger.error(
           `[Schedule] Failed to execute scheduled job ${scheduleId}:`,
@@ -997,6 +1033,7 @@ const env = loadEnv(process.env);
   }
 
   async function createScheduledDownload(clientId, requestData) {
+    assertMediaUrl(requestData.url);
     const scheduledFor = requestData.scheduledFor;
     const scheduledTime = new Date(scheduledFor).getTime();
     if (!scheduledFor || !Number.isFinite(scheduledTime) || scheduledTime <= Date.now()) {
@@ -1065,6 +1102,13 @@ const env = loadEnv(process.env);
         id: item.id,
         title: item.title,
         index,
+        thumbnail:
+          item.thumbnail ||
+          (/^[\w-]{11}$/.test(String(item.id || "")) &&
+          detectSiteKeyFromUrl(playlistUrl) === "youtube"
+            ? `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`
+            : null),
+        duration: item.duration || null,
       })),
     };
   }
@@ -1292,9 +1336,10 @@ const env = loadEnv(process.env);
   const server = http.createServer(app);
   const serverToken = generateToken();
   const authMiddleware = createAuthMiddleware(serverToken);
-  const wss = new WebSocket.Server({ noServer: true });
+  const wss = new WebSocket.Server({ noServer: true, maxPayload: 1024 * 1024 });
 
   // ==================== MIDDLEWARE ====================
+  app.use(createLocalRequestGuard(PORT));
   app.use(express.json({ limit: "5mb" }));
   app.use(express.urlencoded({ extended: true, limit: "5mb" }));
   app.use(
@@ -1303,8 +1348,7 @@ const env = loadEnv(process.env);
         // Allow requests with no origin (like mobile apps or curl) or from localhost
         if (
           !origin ||
-          origin.startsWith("http://localhost") ||
-          origin.startsWith("http://127.0.0.1")
+          isLocalOrigin(origin, PORT)
         ) {
           callback(null, true);
         } else {
@@ -1327,6 +1371,11 @@ const env = loadEnv(process.env);
   app.use("/diagnostics", looseLimiter);
   app.use("/tools-status", looseLimiter);
   app.use("/history-index", looseLimiter);
+  app.use("/playlist-preview", standardLimiter);
+  app.use("/scheduled-downloads", standardLimiter);
+  app.use("/failed-downloads", standardLimiter);
+  app.use("/recoverable-downloads", looseLimiter);
+  app.use("/download-items", standardLimiter);
 
   // --- STATIC ROOT (dev + packaged) ---
   const resourcesRoot = process.resourcesPath || __dirname;
@@ -1340,6 +1389,7 @@ const env = loadEnv(process.env);
     : path.join(__dirname, "assets");
 
   app.use("/public", express.static(publicDir));
+  app.get("/favicon.ico", (req, res) => res.sendFile(path.join(publicDir, "Logo1.ico")));
   app.use("/assets", express.static(assetsDir));
 
   const rootFile = (filename) => {
@@ -1381,7 +1431,9 @@ const env = loadEnv(process.env);
       const clientId = requestUrl.searchParams.get("clientId");
       const providedToken = requestUrl.searchParams.get("token");
 
-      if (!clientId || !isValidToken(serverToken, providedToken)) {
+      if (!isLocalOrigin(`http://${request.headers.host}`, PORT) ||
+          (request.headers.origin && !isLocalOrigin(request.headers.origin, PORT)) ||
+          !clientId || clientId.length > 128 || !isValidToken(serverToken, providedToken)) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
@@ -1511,6 +1563,19 @@ const env = loadEnv(process.env);
         type: "error",
         message: "Missing video URL.",
       });
+    }
+
+    try {
+      assertMediaUrl(videoUrl, true);
+      if (!["mp3", "wav", "m4a", "opus", "flac", "mp4", "mkv", "mov", "webm"].includes(format)) {
+        throw new TypeError("Select a supported download format.");
+      }
+      if (settings.downloadFolder !== undefined && typeof settings.downloadFolder !== "string") {
+        throw new TypeError("Download folder must be a path.");
+      }
+    } catch (error) {
+      sendMessageToClient(clientId, { type: "error", message: error.message });
+      return;
     }
 
     // Check if URL is blocked
@@ -1643,7 +1708,7 @@ const env = loadEnv(process.env);
           settings,
         });
 
-        playlistFolderPath = getUniqueFolderPath(
+        playlistFolderPath = await getUniqueFolderPath(
           fs,
           organizedBaseFolder,
           playlistTitle,
@@ -1690,7 +1755,7 @@ const env = loadEnv(process.env);
           const individualItemId = `${source}_${item.id}_${Date.now()}_${index}`;
           const itemData = {
             clientId,
-            videoUrl: item.id,
+            videoUrl: item.url || item.id,
             format,
             quality,
             source,
@@ -1728,7 +1793,7 @@ const env = loadEnv(process.env);
                 }
                 const videoInfo = await getVideoInfo(
                   clientId,
-                  item.id,
+                  item.url || item.id,
                   individualItemId,
                   quality,
                   format,
@@ -1932,6 +1997,28 @@ const env = loadEnv(process.env);
     }
   }
 
+  // Snapshot the jobs a cancel request will stop, so usage statistics can count
+  // them afterwards. Only format/URL/playlist flags are read; nothing is sent here.
+  function collectCancellableJobsForTelemetry(itemId) {
+    const jobs = [];
+    const add = (job) => {
+      if (job && !job.isMeta && !job.cancelled && job.videoUrl) jobs.push(job);
+    };
+    const queued = downloadQueue.get(itemId);
+    if (queued?.isMeta) {
+      downloadQueue.forEach((item) => {
+        if (item.parentPlaylistId === itemId) add(item);
+      });
+      activeProcesses.forEach((proc) => {
+        if (proc.itemData?.parentPlaylistId === itemId && !proc.cancelled) add(proc.itemData);
+      });
+      return jobs;
+    }
+    const active = activeProcesses.get(itemId);
+    add(queued || pausedDownloads.get(itemId) || (active && !active.cancelled ? active.itemData : null));
+    return jobs;
+  }
+
   // ==================== CANCELLATION HANDLING ====================
   async function handleCancelRequest(clientId, itemId) {
     const job = downloadQueue.get(itemId) || pausedDownloads.get(itemId) || activeProcesses.get(itemId);
@@ -1949,12 +2036,18 @@ const env = loadEnv(process.env);
     if (queuedItem) {
       queuedItem.cancelled = true;
       if (queuedItem.isMeta) {
-        downloadQueue.forEach((item) => {
-          if (item.parentPlaylistId === itemId) item.cancelled = true;
+        const childIds = new Set();
+        downloadQueue.forEach((item, childId) => {
+          if (item.parentPlaylistId === itemId) childIds.add(childId);
         });
+        activeProcesses.forEach((item, childId) => {
+          if (item.itemData?.parentPlaylistId === itemId) childIds.add(childId);
+        });
+        await Promise.all(Array.from(childIds, childId => handleCancelRequest(clientId, childId)));
+      } else {
+        downloadQueue.delete(itemId);
       }
-      markDirty();
-      downloadQueue.delete(itemId); // Remove from queue immediately
+      markDirty(); // Remove from queue immediately
       await downloadState.saveRuntimeState();
       sendMessageToClient(clientId, {
         type: "cancel_confirm",
@@ -2050,6 +2143,10 @@ const env = loadEnv(process.env);
   }
 
   // Helper to cleanup files based on glob pattern
+  function escapeGlob(value) {
+    return value.replace(/([*?\[\]{}()!+@\\])/g, "\\$1");
+  }
+
   async function cleanupFilesByPattern(pattern, itemId) {
     try {
       const files = await globAsync(path.basename(pattern), {
@@ -2080,7 +2177,7 @@ const env = loadEnv(process.env);
       const dir = path.dirname(template);
       const base = path.basename(template);
       // Remove extension placeholders for matching
-      const basePattern = base.replace(/%\([^)]+\)s/g, "*");
+      const basePattern = base.split(/%\([^)]+\)s/g).map(escapeGlob).join("*");
       // Get base name without extension for thumbnail matching
       const nameNoExt = basePattern.replace(/\.[^.]+$/, "");
 
@@ -2147,6 +2244,8 @@ const env = loadEnv(process.env);
 
     const processInfo = activeProcesses.get(itemId);
     const queuedItem = downloadQueue.get(itemId);
+    const owner = processInfo?.itemData?.clientId || processInfo?.clientId || queuedItem?.clientId || pausedDownloads.get(itemId)?.clientId;
+    if (owner && String(owner) !== String(clientId)) throw new Error("Download item not found.");
 
     // Build the job spec to save for resume
     let jobSpec = null;
@@ -2291,6 +2390,7 @@ const env = loadEnv(process.env);
     logger.info(`[${itemId}] ▶️ Resume request received`);
 
     const jobSpec = pausedDownloads.get(itemId);
+    if (jobSpec && String(jobSpec.clientId) !== String(clientId)) throw new Error("Download item not found.");
     if (!jobSpec) {
       sendMessageToClient(clientId, {
         type: "error",
@@ -2644,7 +2744,7 @@ const env = loadEnv(process.env);
         const glob = require("glob");
 
         // Get all files with this base name, but filter out temp/partial files
-        const allMatches = glob.sync(`${baseName}.*`, { cwd: dir });
+        const allMatches = glob.sync(`${escapeGlob(baseName)}.*`, { cwd: dir });
         const tempExtensions = [".part", ".ytdl", ".temp"];
         const existingFiles = allMatches.filter((f) => {
           const ext = path.extname(f).toLowerCase();
@@ -2660,7 +2760,7 @@ const env = loadEnv(process.env);
         let counter = 1;
         let uniqueName = `${baseName} (${counter})`;
         while (true) {
-          const matches = glob.sync(`${uniqueName}.*`, { cwd: dir });
+          const matches = glob.sync(`${escapeGlob(uniqueName)}.*`, { cwd: dir });
           const realFiles = matches.filter((f) => {
             const ext = path.extname(f).toLowerCase();
             return !tempExtensions.includes(ext) && !f.match(/\.f\d+\./);
@@ -2832,10 +2932,10 @@ const env = loadEnv(process.env);
         if (containerFormat === "mov") {
           // MOV works best with H.264/H.265 codecs
           if (targetHeight >= 2160) {
-            formatString = `bestvideo*[height<=${targetHeight}][vcodec^=avc][ext=mp4]+bestaudio${originalAudioFilter}[ext=m4a]/bestvideo*[height<=${targetHeight}][vcodec^=avc][ext=mp4]+bestaudio[ext=m4a]/bestvideo*[height<=${targetHeight}][vcodec^=hevc][ext=mp4]+bestaudio${originalAudioFilter}[ext=m4a]/bestvideo*[height<=${targetHeight}][vcodec^=hevc][ext=mp4]+bestaudio[ext=m4a]/bestvideo*[height<=${targetHeight}][ext=mp4]+bestaudio${originalAudioFilter}[ext=m4a]/bestvideo*[height<=${targetHeight}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${targetHeight}]`;
+            formatString = `bestvideo*[height<=${targetHeight}][vcodec^=avc][ext=mp4]+bestaudio${originalAudioFilter}[ext=m4a]/bestvideo*[height<=${targetHeight}][vcodec^=avc][ext=mp4]+bestaudio[ext=m4a]/bestvideo*[height<=${targetHeight}][vcodec^=hevc][ext=mp4]+bestaudio${originalAudioFilter}[ext=m4a]/bestvideo*[height<=${targetHeight}][vcodec^=hevc][ext=mp4]+bestaudio[ext=m4a]/bestvideo*[height<=${targetHeight}][ext=mp4]+bestaudio${originalAudioFilter}[ext=m4a]/bestvideo*[height<=${targetHeight}][ext=mp4]+bestaudio[ext=m4a]/best[height<=?${targetHeight}]`;
             sortOrder = `res,fps,${hdrSortKey},tbr,vcodec:h264,vcodec:hevc`;
           } else {
-            formatString = `bv*[height<=${targetHeight}][vcodec^=avc][ext=mp4]+ba${originalAudioFilter}[ext=m4a]/bv*[height<=${targetHeight}][vcodec^=avc][ext=mp4]+ba[ext=m4a]/bv*[height<=${targetHeight}][vcodec^=hevc][ext=mp4]+ba${originalAudioFilter}[ext=m4a]/bv*[height<=${targetHeight}][vcodec^=hevc][ext=mp4]+ba[ext=m4a]/bv*[height<=${targetHeight}][ext=mp4]+ba${originalAudioFilter}[ext=m4a]/bv*[height<=${targetHeight}][ext=mp4]+ba[ext=m4a]/best[height<=${targetHeight}]`;
+            formatString = `bv*[height<=${targetHeight}][vcodec^=avc][ext=mp4]+ba${originalAudioFilter}[ext=m4a]/bv*[height<=${targetHeight}][vcodec^=avc][ext=mp4]+ba[ext=m4a]/bv*[height<=${targetHeight}][vcodec^=hevc][ext=mp4]+ba${originalAudioFilter}[ext=m4a]/bv*[height<=${targetHeight}][vcodec^=hevc][ext=mp4]+ba[ext=m4a]/bv*[height<=${targetHeight}][ext=mp4]+ba${originalAudioFilter}[ext=m4a]/bv*[height<=${targetHeight}][ext=mp4]+ba[ext=m4a]/best[height<=?${targetHeight}]`;
             sortOrder = `res,fps,${hdrSortKey},tbr,vcodec:h264,vcodec:hevc`;
           }
           logger.info(
@@ -2844,10 +2944,10 @@ const env = loadEnv(process.env);
         } else if (containerFormat === "webm") {
           // WEBM works best with VP8/VP9 codecs
           if (targetHeight >= 2160) {
-            formatString = `bestvideo*[height<=${targetHeight}][vcodec^=vp9]+bestaudio${originalAudioFilter}[acodec^=opus]/bestvideo*[height<=${targetHeight}][vcodec^=vp9]+bestaudio[acodec^=opus]/bestvideo*[height<=${targetHeight}][vcodec^=vp8]+bestaudio${originalAudioFilter}[acodec^=vorbis]/bestvideo*[height<=${targetHeight}][vcodec^=vp8]+bestaudio[acodec^=vorbis]/bestvideo*[height<=${targetHeight}][vcodec^=vp9]+bestaudio${originalAudioFilter}/bestvideo*[height<=${targetHeight}][vcodec^=vp9]+bestaudio/best[height<=${targetHeight}]`;
+            formatString = `bestvideo*[height<=${targetHeight}][vcodec^=vp9]+bestaudio${originalAudioFilter}[acodec^=opus]/bestvideo*[height<=${targetHeight}][vcodec^=vp9]+bestaudio[acodec^=opus]/bestvideo*[height<=${targetHeight}][vcodec^=vp8]+bestaudio${originalAudioFilter}[acodec^=vorbis]/bestvideo*[height<=${targetHeight}][vcodec^=vp8]+bestaudio[acodec^=vorbis]/bestvideo*[height<=${targetHeight}][vcodec^=vp9]+bestaudio${originalAudioFilter}/bestvideo*[height<=${targetHeight}][vcodec^=vp9]+bestaudio/best[height<=?${targetHeight}]`;
             sortOrder = `res,fps,${hdrSortKey},tbr,vcodec:vp9,vcodec:vp8`;
           } else {
-            formatString = `bv*[height<=${targetHeight}][vcodec^=vp9]+ba${originalAudioFilter}[acodec^=opus]/bv*[height<=${targetHeight}][vcodec^=vp9]+ba[acodec^=opus]/bv*[height<=${targetHeight}][vcodec^=vp8]+ba${originalAudioFilter}[acodec^=vorbis]/bv*[height<=${targetHeight}][vcodec^=vp8]+ba[acodec^=vorbis]/bv*[height<=${targetHeight}][vcodec^=vp9]+ba${originalAudioFilter}/bv*[height<=${targetHeight}][vcodec^=vp9]+ba/best[height<=${targetHeight}]`;
+            formatString = `bv*[height<=${targetHeight}][vcodec^=vp9]+ba${originalAudioFilter}[acodec^=opus]/bv*[height<=${targetHeight}][vcodec^=vp9]+ba[acodec^=opus]/bv*[height<=${targetHeight}][vcodec^=vp8]+ba${originalAudioFilter}[acodec^=vorbis]/bv*[height<=${targetHeight}][vcodec^=vp8]+ba[acodec^=vorbis]/bv*[height<=${targetHeight}][vcodec^=vp9]+ba${originalAudioFilter}/bv*[height<=${targetHeight}][vcodec^=vp9]+ba/best[height<=?${targetHeight}]`;
             sortOrder = `res,fps,${hdrSortKey},tbr,vcodec:vp9,vcodec:vp8`;
           }
           logger.info(
@@ -2855,21 +2955,21 @@ const env = loadEnv(process.env);
           );
         } else if (targetHeight >= 2160) {
           // 4K+ / HIGHEST MODE: Prefer original audio, fallback to any audio
-          formatString = `bestvideo*[height<=${targetHeight}]+bestaudio${originalAudioFilter}/bestvideo*[height<=${targetHeight}]+bestaudio/best[height<=${targetHeight}]`;
+          formatString = `bestvideo*[height<=${targetHeight}]+bestaudio${originalAudioFilter}/bestvideo*[height<=${targetHeight}]+bestaudio/best[height<=?${targetHeight}]`;
           sortOrder = `res,fps,${hdrSortKey},tbr,vcodec:av01,vcodec:vp9.2,vcodec:vp9,vcodec:h264`;
           logger.info(
             `[${itemId}] 📺 FORMAT: HIGHEST/4K+ MODE - Selector: ${formatString}`,
           );
         } else if (targetHeight >= 1440) {
           // 2K (1440p): Prefer 1440p → 1080p → bestvideo+original audio → best
-          formatString = `bv*[height<=${targetHeight}]+ba${originalAudioFilter}/bv*[height<=${targetHeight}]+ba/best[height<=${targetHeight}]`;
+          formatString = `bv*[height<=${targetHeight}]+ba${originalAudioFilter}/bv*[height<=${targetHeight}]+ba/best[height<=?${targetHeight}]`;
           sortOrder = `res,fps,${hdrSortKey},tbr,vcodec:av01,vcodec:vp9.2,vcodec:vp9,vcodec:h264`;
           logger.info(
             `[${itemId}] 📺 FORMAT: 2K MODE - Selector: ${formatString}`,
           );
         } else {
           // 1080p and below: Prefer H.264/MP4 → any video+original audio → best
-          formatString = `bv*[height<=${targetHeight}][ext=mp4][vcodec^=avc]+ba${originalAudioFilter}[ext=m4a]/bv*[height<=${targetHeight}][ext=mp4][vcodec^=avc]+ba[ext=m4a]/bv*[height<=${targetHeight}][ext=mp4]+ba${originalAudioFilter}[ext=m4a]/bv*[height<=${targetHeight}][ext=mp4]+ba[ext=m4a]/bv*[height<=${targetHeight}]+ba${originalAudioFilter}/bv*[height<=${targetHeight}]+ba/bestvideo*[height<=${targetHeight}]+bestaudio${originalAudioFilter}/bestvideo*[height<=${targetHeight}]+bestaudio/best[height<=${targetHeight}]`;
+          formatString = `bv*[height<=${targetHeight}][ext=mp4][vcodec^=avc]+ba${originalAudioFilter}[ext=m4a]/bv*[height<=${targetHeight}][ext=mp4][vcodec^=avc]+ba[ext=m4a]/bv*[height<=${targetHeight}][ext=mp4]+ba${originalAudioFilter}[ext=m4a]/bv*[height<=${targetHeight}][ext=mp4]+ba[ext=m4a]/bv*[height<=${targetHeight}]+ba${originalAudioFilter}/bv*[height<=${targetHeight}]+ba/bestvideo*[height<=${targetHeight}]+bestaudio${originalAudioFilter}/bestvideo*[height<=${targetHeight}]+bestaudio/best[height<=?${targetHeight}]`;
           sortOrder = `res,fps,${hdrSortKey},tbr,vcodec:h264,ext:mp4`;
           logger.info(
             `[${itemId}] 📺 FORMAT: STANDARD MODE (${targetHeight}p) - Selector: ${formatString}`,
@@ -2908,7 +3008,8 @@ const env = loadEnv(process.env);
         }
 
         videoArgs.push(
-          // NOTE: Removed --no-overwrites here because getUniqueFilename() already ensures unique names
+          // Keep a final safeguard if concurrent jobs select the same name.
+          "--no-overwrites",
           "--no-playlist",
           "-o",
           fixedOutputTemplate, // Use fixed extension template
@@ -3055,6 +3156,14 @@ const env = loadEnv(process.env);
         });
 
         await downloadCompletionService.sendAndRecord(clientId, payload);
+        usageTelemetry.recordDownloadFinished({
+          result: "success",
+          url: videoUrl,
+          format,
+          isPlaylistItem: itemData.isPlaylistItem === true,
+          durationSeconds: itemProcInfo.videoInfo?.duration,
+          sizeBytes: usageTelemetryFileSize(finalFilePathValue),
+        });
       } catch (e) {
         logger.error(`[${itemId}] Stat error for ${finalFilePathValue}:`, e);
       }
@@ -3151,6 +3260,14 @@ const env = loadEnv(process.env);
           itemId,
           source,
         });
+        usageTelemetry.recordDownloadFinished({
+          result: "failed",
+          url: videoUrl,
+          format,
+          isPlaylistItem: itemData.isPlaylistItem === true,
+          errorCategory: classification.category,
+          durationSeconds: itemProcInfo.videoInfo?.duration,
+        });
       } else {
         logger.info(
           `[${itemId}] Processing stopped due to cancellation for ${videoUrl}.`,
@@ -3225,12 +3342,7 @@ const env = loadEnv(process.env);
   }
 
   // ==================== COOKIE MANAGEMENT ====================
-  const COOKIE_PATH_CACHE_TTL_MS = 5000;
   const ADAPTIVE_THROTTLE_COOLDOWN_MS = 15 * 60 * 1000;
-  let cachedCookiesPathResult = {
-    checkedAt: 0,
-    path: null,
-  };
   let cachedCookieValidationResult = {
     path: null,
     size: 0,
@@ -3269,35 +3381,14 @@ const env = loadEnv(process.env);
   }
 
   async function getCookiesPath() {
-    const now = Date.now();
-    if (now - cachedCookiesPathResult.checkedAt < COOKIE_PATH_CACHE_TTL_MS) {
-      return cachedCookiesPathResult.path;
-    }
-
-    const cookiesDir = env.COOKIES_DIR || path.join(writableDataRoot, "cookies");
-    const cookiesPath = path.join(cookiesDir, "cookies.txt");
-
-    if (!fs.existsSync(cookiesDir)) {
-      fs.mkdirSync(cookiesDir, { recursive: true, mode: 0o700 });
-      logger.info("[getCookiesPath] 📁 Created cookies directory:", cookiesDir);
-    }
-
-    if (fs.existsSync(cookiesPath)) {
+    const cookiesPath = getCookiesFilePath(env.USER_DATA_PATH || fallbackUserDataRoot);
+    try {
       const stats = fs.statSync(cookiesPath);
-      if (stats.size > 50) {
-        cachedCookiesPathResult = {
-          checkedAt: now,
-          path: cookiesPath,
-        };
-        return cookiesPath;
-      }
+      return stats.isFile() && stats.size > 0 ? cookiesPath : null;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      return null;
     }
-
-    cachedCookiesPathResult = {
-      checkedAt: now,
-      path: null,
-    };
-    return null;
   }
 
   async function validateCookiesFile(filePath, fileStats = null) {
@@ -3312,35 +3403,7 @@ const env = loadEnv(process.env);
       }
 
       const content = fs.readFileSync(filePath, "utf8").trim();
-      let isValid = true;
-
-      if (!content || content.length < 10) {
-        isValid = false;
-      }
-
-      let nonCommentLines = [];
-      if (isValid) {
-        const lines = content.split("\n");
-        nonCommentLines = lines.filter((line) => {
-          const trimmed = line.trim();
-          return trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("//");
-        });
-
-        if (nonCommentLines.length === 0) {
-          isValid = false;
-        }
-
-        const hasValidIndicator =
-          content.toLowerCase().includes("youtube") ||
-          content.toLowerCase().includes("google") ||
-          content.includes("\t") ||
-          content.includes(".com") ||
-          nonCommentLines.length >= 3;
-
-        if (!hasValidIndicator) {
-          isValid = false;
-        }
-      }
+      const isValid = isValidCookiesText(content);
 
       cachedCookieValidationResult = {
         path: filePath,
@@ -3504,7 +3567,7 @@ const env = loadEnv(process.env);
       const templateBase = path
         .basename(outputTemplate)
         .replace(".%(ext)s", "");
-      const partFiles = glob.sync(`${templateBase}*.part`, {
+      const partFiles = glob.sync(`${escapeGlob(templateBase)}*.part`, {
         cwd: templateDir,
         absolute: true,
       });
@@ -3581,7 +3644,7 @@ const env = loadEnv(process.env);
           containerFormat,
         );
 
-        const formatString = `bestvideo[height<=${targetHeight}]+bestaudio/best[height<=${targetHeight}]`;
+        const formatString = `bestvideo[height<=${targetHeight}]+bestaudio/best[height<=?${targetHeight}]`;
         const hdrSortKey = getHdrFormatSortKey(settings);
 
         ytdlpArgs.push(
@@ -3648,6 +3711,13 @@ const env = loadEnv(process.env);
             message: "Download complete!",
           });
           await downloadCompletionService.sendAndRecord(clientId, payload);
+          usageTelemetry.recordDownloadFinished({
+            result: "success",
+            url: videoUrl,
+            format,
+            isPlaylistItem: itemData.isPlaylistItem === true,
+            sizeBytes: usageTelemetryFileSize(finalPath),
+          });
 
           logger.info(
             `[${itemId}] ✅ Resume complete: ${finalPath} (${payload.actualSize})`,
@@ -3673,6 +3743,13 @@ const env = loadEnv(process.env);
         message, failedAt: new Date().toISOString(), playlistAction: "single",
       });
       sendMessageToClient(clientId, { type: "error", message, itemId, source });
+      usageTelemetry.recordDownloadFinished({
+        result: "failed",
+        url: videoUrl,
+        format,
+        isPlaylistItem: itemData.isPlaylistItem === true,
+        errorCategory: classification.category,
+      });
     } finally {
       activeProcesses.delete(itemId);
     }
@@ -3751,7 +3828,74 @@ const env = loadEnv(process.env);
       }
     }
 
+    const fallbackArgs =
+      siteKey === "youtube" &&
+      !isInfoOnly &&
+      lastError?.classification?.code === "STREAM_FORBIDDEN" &&
+      !itemProcInfoRef?.cancelled &&
+      !itemProcInfoRef?.paused
+        ? buildYouTubeHlsFallbackArgs(baseArgs)
+        : null;
+    if (fallbackArgs) {
+      logger.warn(
+        `[${itemId}] Direct YouTube stream refused (403). Retrying with the HLS stream.`,
+      );
+      sendMessageToClient(clientId, {
+        type: "status",
+        itemId,
+        message: "YouTube refused the direct stream. Retrying with the HLS stream...",
+      });
+      try {
+        const result = await runSingleYtDlpCommand(
+          clientId,
+          fallbackArgs,
+          itemId,
+          suppressProgress,
+          itemProcInfoRef,
+        );
+        siteRequestGuard.recordSuccess(siteKey);
+        return result;
+      } catch (fallbackError) {
+        logger.error(
+          `[${itemId}] HLS fallback failed: ${fallbackError.message}`,
+        );
+      }
+    }
+
     throw lastError;
+  }
+
+  // YouTube can refuse the direct (DASH/https) media stream with a 403 even when
+  // extraction and cookies are fine. The web_safari client exposes HLS streams
+  // that are still served, so retry once with a muxed HLS selector.
+  function buildYouTubeHlsFallbackArgs(baseArgs) {
+    if (baseArgs.includes("--extractor-args")) return null;
+
+    const args = [...baseArgs];
+    const isAudio = args.includes("--extract-audio");
+    const mergeIndex = args.indexOf("--merge-output-format");
+    const container = mergeIndex >= 0 ? args[mergeIndex + 1] : null;
+    // HLS streams are H.264/AAC; WebM output would need a full re-encode.
+    if (!isAudio && container === "webm") return null;
+
+    const formatIndex = args.indexOf("-f");
+    const heightMatch =
+      formatIndex >= 0 ? /height<=\??(\d+)/.exec(args[formatIndex + 1]) : null;
+    const targetHeight = isAudio ? 360 : Number(heightMatch?.[1]) || 1080;
+    const selector = `b[protocol*=m3u8][height<=${targetHeight}]/b[protocol*=m3u8]`;
+
+    if (formatIndex >= 0) {
+      args[formatIndex + 1] = selector;
+    } else {
+      args.unshift("-f", selector);
+    }
+    const sortIndex = args.indexOf("-S");
+    if (sortIndex >= 0) args[sortIndex + 1] = "res,fps";
+    if (!isAudio && (container === "mkv" || container === "mov")) {
+      args.unshift("--remux-video", container);
+    }
+    args.unshift("--extractor-args", "youtube:player_client=default,web_safari");
+    return args;
   }
 
   async function runSingleYtDlpCommand(
@@ -3767,6 +3911,7 @@ const env = loadEnv(process.env);
       itemProcInfoRef?.videoUrl ||
       baseArgs.find((arg) => /^https?:\/\//i.test(String(arg))) ||
       "";
+    if (requestUrl) assertMediaUrl(requestUrl, true);
     const siteKey = detectSiteKeyFromUrl(requestUrl, itemProcInfoRef?.source);
     const isInfoOnly =
       suppressProgress ||
@@ -3828,6 +3973,7 @@ const env = loadEnv(process.env);
 
     // OPTIMIZED ARGS - Different settings for info vs downloads
     const finalArgs = [
+      "--ignore-config",
       ...cookieArgs,
       ...baseArgs,
       "--ffmpeg-location",
@@ -3991,7 +4137,7 @@ const env = loadEnv(process.env);
               // If it's a template, look for .part files that yt-dlp would resume
               const glob = require("glob");
               const matches = glob.sync(
-                `${baseName.replace("%(ext)s", "")}*.part`,
+                `${escapeGlob(baseName.replace("%(ext)s", ""))}*.part`,
                 { cwd: baseDir, absolute: true },
               );
               if (matches.length > 0) checkPath = matches[0];
@@ -4277,8 +4423,8 @@ const env = loadEnv(process.env);
 
         // Enhanced error detection
         if (data.includes("403") || data.includes("Forbidden")) {
-          logger.info(`[${itemId}] 🚨 Auth error detected: ${data.trim()}`);
-          if (!isInfoOnly) {
+          logger.info(`[${itemId}] 🚨 HTTP 403 detected: ${data.trim()}`);
+          if (!isInfoOnly && !/unable to download video data/i.test(data)) {
             sendMessageToClient(clientId, {
               type: "status",
               message:
@@ -4498,7 +4644,10 @@ const env = loadEnv(process.env);
             stderrData.trim() ||
             `yt-dlp exited with code ${code}`;
 
-          if (errorMsg.includes("403") || errorMsg.includes("Forbidden")) {
+          if (/unable to download video data: HTTP Error 403/i.test(errorMsg)) {
+            // Extraction already succeeded, so the cookies were accepted.
+            errorMsg = `The media stream was refused by the site (HTTP 403). Original error: ${errorMsg}`;
+          } else if (errorMsg.includes("403") || errorMsg.includes("Forbidden")) {
             errorMsg = cookieFilePath
               ? `Authentication failed despite cookies. Your cookies may be expired or invalid. Original error: ${errorMsg}`
               : `Authentication required (403 Forbidden). Try importing cookies. Original error: ${errorMsg}`;
@@ -4626,6 +4775,7 @@ const env = loadEnv(process.env);
     retryAllFailedDownloads,
     dismissDownloadItem,
     previewPlaylist,
+    usageTelemetry,
     logger: logger,
   });
 
@@ -4748,9 +4898,12 @@ const env = loadEnv(process.env);
       clientWs.terminate();
     });
 
+    const usageTelemetryShutdown = usageTelemetry.shutdown().catch(() => {});
+
     server.close(async () => {
       logger.info("HTTP server closed.");
       await shutdownSnapshotPromise;
+      await usageTelemetryShutdown;
       activeProcesses.forEach((procInfo, itemId) => {
         logger.info(
           `Terminating active processes for item: ${itemId} during shutdown.`,

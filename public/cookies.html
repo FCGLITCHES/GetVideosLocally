@@ -406,6 +406,7 @@
 
                 <!-- Content -->
                 <div class="cookies-content">
+                    <p class="cookie-note" id="cookieSessionNotice"><strong>A saved file can still be rejected.</strong> Cookies from your account can expire or change when the website refreshes your browser session. Saving checks the file format; it does not confirm that the website will accept the session.</p>
                     <!-- Upload/Drop Zone -->
                     <div class="cookie-upload-zone" id="uploadZone">
                         <input type="file" id="fileInput" accept=".txt" />
@@ -448,9 +449,18 @@
                             <li><span>Install a browser extension like <strong><a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener noreferrer">cookies.txt</a></strong> for Chrome/Firefox</span></li>
                             <li><span>Go to the website where you have permission to access content</span></li>
                             <li><span><strong>Click the extension</strong> and export cookies for the relevant domain</span></li>
-                            <li><span><strong>Save the file</strong> and upload it here, or copy-paste the content</span></li>
-                            <li><span><strong>Click Save</strong> to apply the cookies</span></li>
+                            <li><span><strong>Upload the exported file</strong> here to save it automatically, or paste its contents and select <strong>Save Cookies</strong></span></li>
                         </ol>
+                        <details id="youtubeCookieExportGuide">
+                            <summary><strong>YouTube: export a session that stays usable</strong></summary>
+                            <ol>
+                                <li><span>Open a private/incognito window and sign into YouTube. Allow your cookie-export extension in that window if needed.</span></li>
+                                <li><span>In that same tab, enter <strong>https://www.youtube.com/robots.txt</strong> in the address bar. Keep only this one private tab open.</span></li>
+                                <li><span>Use the extension to export <strong>youtube.com cookies</strong>. The text on the robots.txt page is not the cookies file.</span></li>
+                                <li><span><strong>Close the private window</strong> after exporting. Upload the exported .txt file here, then retry the download.</span></li>
+                            </ol>
+                            <p>Keeping the exported session open in the browser can cause YouTube to replace its cookies. A new export may be needed if the site still rejects the session.</p>
+                        </details>
                         <p class="cookie-note"><strong>Note:</strong> Only use this feature for content you have proper authorization and permission to access.</p>
                     </div>
 
@@ -524,7 +534,7 @@
 
         async function persistCookies(cookies, options = {}) {
             const {
-                successMessage = 'Cookies saved successfully!',
+                successMessage = 'Cookies saved. Retry your download to check whether the site accepts this session.',
                 closeAfterSave = false,
                 clearFormAfterSave = false
             } = options;
@@ -573,7 +583,7 @@
                 cookieInput.value = text;
                 setSaveButtonState(true);
                 const saved = await persistCookies(text.trim(), {
-                    successMessage: 'File uploaded and cookies saved automatically!'
+                    successMessage: 'File imported. Retry your download to check whether the site accepts this session.'
                 });
                 if (!saved) {
                     setSaveButtonState(false);
@@ -624,7 +634,7 @@
 
             try {
                 const saved = await persistCookies(cookies, {
-                    successMessage: 'Cookies saved successfully!',
+                    successMessage: 'Cookies saved. Retry your download to check whether the site accepts this session.',
                     clearFormAfterSave: true,
                     closeAfterSave: true
                 });

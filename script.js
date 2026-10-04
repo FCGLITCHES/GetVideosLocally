@@ -216,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const playlistSelectionSummary = document.getElementById('playlistSelectionSummary');
     const playlistSelectionList = document.getElementById('playlistSelectionList');
     const playlistSelectAllBtn = document.getElementById('playlistSelectAllBtn');
-    const playlistClearSelectionBtn = document.getElementById('playlistClearSelectionBtn');
+    const playlistSelectionCount = document.getElementById('playlistSelectionCount');
     const confirmPlaylistSelectionBtn = document.getElementById('confirmPlaylistSelectionBtn');
     const cancelPlaylistSelectionBtn = document.getElementById('cancelPlaylistSelectionBtn');
 
@@ -431,6 +431,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function openSettingsWithSection(sectionElement) {
         populateSettingsModal();
         if (sectionElement) {
+            activateSettingsTab(sectionElement.closest('[data-settings-panel]')?.dataset.settingsPanel);
+        }
+        if (sectionElement) {
             if (sectionElement === setupHealthSection) {
                 setSetupHealthSectionVisibility(true);
             } else {
@@ -524,6 +527,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const configs = [
             {
+                id: 'cookies_rejected',
+                pattern: /(saved cookie session was rejected|imported cookies appear to be expired|provided youtube account cookies are no longer valid|authentication failed despite cookies)/i,
+                title: 'Your saved cookie session was rejected.',
+                description: 'The cookie file was found and used, but the site still requested sign-in. The session may have expired, changed in your browser, or failed a site security check.',
+                steps: [
+                    'Export a new session from an account that can play the video.',
+                    'For YouTube, follow the private-window export steps in the cookies helper, then close that window.',
+                    'Import the new file and retry. Saving a file checks its format, not whether the site accepts it.'
+                ],
+                actionLabel: 'Import Fresh Cookies',
+                action: () => openCookiesHelperFlow()
+            },
+            {
                 id: 'private_video',
                 pattern: /(private|members-only|subscriber-only|login required|sign in to confirm|age-restricted)/i,
                 title: 'This video likely needs account access.',
@@ -559,6 +575,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 ],
                 actionLabel: 'Import Cookies',
                 action: () => openCookiesHelperFlow()
+            },
+            {
+                id: 'stream_protection',
+                pattern: /(stream protection|media stream was refused|unable to download video data: http error 403)/i,
+                title: 'YouTube refused the media stream.',
+                description: 'Your cookies were accepted, but YouTube blocked the video data itself. Re-importing cookies will not fix this.',
+                steps: [
+                    'Update yt-dlp in Settings; YouTube changes its stream protection often.',
+                    'Wait a few minutes and retry the download.',
+                    'Pick an MP4 or MKV container so the app can fall back to the HLS stream.'
+                ],
+                actionLabel: 'Update Tools',
+                action: () => {
+                    openSettingsWithSection(setupHealthSection);
+                    setSetupHealthSectionVisibility(true);
+                    const updateToolsBtn = document.getElementById('updateToolsBtn');
+                    updateToolsBtn?.click();
+                }
             },
             {
                 id: 'cookies_required',
@@ -821,7 +855,7 @@ document.addEventListener('DOMContentLoaded', () => {
             items.push({
                 label: 'Cookies helper',
                 state: 'pass',
-                detail: 'Your own cookies.txt is already imported and ready for restricted sites.'
+                detail: 'Your cookies.txt is saved. A download is needed to check whether the site accepts this session.'
             });
         } else {
             items.push({
@@ -1954,12 +1988,62 @@ document.addEventListener('DOMContentLoaded', () => {
             checkbox.checked = true;
             checkbox.dataset.playlistId = item.id;
 
-            const text = document.createElement('span');
-            text.textContent = `${item.index + 1}. ${item.title}`;
+            const thumbWrap = document.createElement('span');
+            thumbWrap.className = 'playlist-selection-thumb';
+            const fallbackIcon = document.createElement('i');
+            fallbackIcon.className = 'fas fa-film';
+            fallbackIcon.setAttribute('aria-hidden', 'true');
+            thumbWrap.appendChild(fallbackIcon);
+            if (typeof item.thumbnail === 'string' && /^https:\/\//i.test(item.thumbnail)) {
+                const img = document.createElement('img');
+                img.alt = '';
+                img.loading = 'lazy';
+                img.decoding = 'async';
+                img.referrerPolicy = 'no-referrer';
+                img.addEventListener('error', () => img.remove(), { once: true });
+                img.src = item.thumbnail;
+                thumbWrap.appendChild(img);
+            }
+            if (item.duration) {
+                const duration = document.createElement('span');
+                duration.className = 'playlist-selection-duration';
+                duration.textContent = item.duration;
+                thumbWrap.appendChild(duration);
+            }
 
-            label.append(checkbox, text);
+            const info = document.createElement('span');
+            info.className = 'playlist-selection-info';
+            const index = document.createElement('span');
+            index.className = 'playlist-selection-index';
+            index.textContent = `#${item.index + 1}`;
+            const title = document.createElement('span');
+            title.className = 'playlist-selection-title';
+            title.textContent = item.title;
+            title.title = item.title;
+            info.append(index, title);
+
+            label.append(checkbox, thumbWrap, info);
             playlistSelectionList.appendChild(label);
         });
+        updatePlaylistSelectionState();
+    }
+
+    function updatePlaylistSelectionState() {
+        const checkboxes = Array.from(playlistSelectionList?.querySelectorAll('input[type="checkbox"]') || []);
+        const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
+        const allSelected = checkboxes.length > 0 && selected === checkboxes.length;
+        if (playlistSelectionCount) {
+            playlistSelectionCount.textContent = `${selected} of ${checkboxes.length} selected`;
+        }
+        if (playlistSelectAllBtn) {
+            playlistSelectAllBtn.innerHTML = allSelected
+                ? '<i class="fas fa-square-minus" aria-hidden="true"></i> <span>Deselect all</span>'
+                : '<i class="fas fa-square-check" aria-hidden="true"></i> <span>Select all</span>';
+            playlistSelectAllBtn.disabled = checkboxes.length === 0;
+        }
+        if (confirmPlaylistSelectionBtn) {
+            confirmPlaylistSelectionBtn.disabled = selected === 0;
+        }
     }
 
     function getSelectedPlaylistItemIds() {
@@ -1990,6 +2074,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function getYouTubeVideoIdFromUrl(value) {
+        try {
+            const parsed = new URL(String(value || ''));
+            const host = parsed.hostname.replace(/^(www|m|music)\./, '');
+            let id = null;
+            if (host === 'youtu.be') {
+                id = parsed.pathname.slice(1).split('/')[0];
+            } else if (host === 'youtube.com') {
+                id = parsed.searchParams.get('v') || (parsed.pathname.match(/^\/(?:shorts|live|embed)\/([\w-]{11})/) || [])[1];
+            }
+            return /^[\w-]{11}$/.test(id || '') ? id : null;
+        } catch {
+            return null;
+        }
+    }
+
     function createScheduledDownloadItem(schedule) {
         const itemId = schedule.scheduleId;
         createDownloadItemStructure(itemId, schedule.title || 'Scheduled download', schedule.source || 'youtube', schedule.playlistAction === 'full');
@@ -2000,8 +2100,13 @@ document.addEventListener('DOMContentLoaded', () => {
             itemState.scheduleId = schedule.scheduleId;
             itemState.retryable = false;
         }
+        const scheduledVideoId = getYouTubeVideoIdFromUrl(schedule.url);
+        if (scheduledVideoId) {
+            updateDownloadItemThumbnail(itemId, `https://i.ytimg.com/vi/${scheduledVideoId}/mqdefault.jpg`);
+        }
         const itemDiv = document.getElementById(`item-${itemId}`);
         if (itemDiv) {
+            itemDiv.classList.add('is-scheduled');
             const pausePlayBtn = itemDiv.querySelector('.item-pause-play-btn');
             const retryBtn = itemDiv.querySelector('.item-retry-btn');
             const cancelBtn = itemDiv.querySelector('.item-cancel-btn');
@@ -2013,6 +2118,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 cancelBtn.textContent = 'Cancel Schedule';
                 cancelBtn.onclick = () => handleDeleteScheduledDownload(schedule.scheduleId);
             }
+        }
+    }
+
+    // Anonymous usage statistics are opt-in. The backend owns the install ID and
+    // queue; if it and this window disagree, "off" wins on both sides.
+    async function setUsageStatsOnServer(enabled) {
+        try {
+            const response = await window.localApiAuth.authorizedFetch('/api/usage-stats', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled === true })
+            });
+            return response.ok ? await response.json() : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    async function reconcileUsageStats() {
+        try {
+            const response = await window.localApiAuth.authorizedFetch('/api/usage-stats');
+            if (!response.ok) return;
+            const status = await response.json();
+            const localEnabled = userSettings.usageStats === true;
+            if (status.enabled === localEnabled) return;
+            if (status.enabled) {
+                await setUsageStatsOnServer(false);
+            } else {
+                userSettings.usageStats = false;
+                userSettings.errorTelemetry = false;
+                localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+                const usageStatsCheckbox = document.getElementById('usageStats');
+                if (usageStatsCheckbox) usageStatsCheckbox.checked = false;
+            }
+        } catch (_) {
+            // Best effort only; the backend defaults to off.
         }
     }
 
@@ -2145,6 +2286,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 scheduleId: scheduled.scheduleId,
                 scheduledFor: scheduled.scheduledFor,
                 title: payload.previewTitle,
+                url,
                 source,
                 format,
                 quality,
@@ -2464,7 +2606,8 @@ document.addEventListener('DOMContentLoaded', () => {
             keepPcAwake: true,
             uiScale: 1.0, // Add UI scale default
             autoUpdateTools: true, // Enable auto-updates by default
-            errorTelemetry: false, // Opt-in error telemetry (default: disabled for privacy)
+            errorTelemetry: false, // Legacy key; mirrors usageStats (default: disabled for privacy)
+            usageStats: false, // Opt-in anonymous usage statistics (default: disabled)
             startWithWindows: false, // Start app with Windows (default: disabled)
             supportPopupDisabled: false,
             preferHdr: false,
@@ -2491,7 +2634,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const autoUpdateToolsCheckbox = document.getElementById('autoUpdateTools');
-        const errorTelemetryCheckbox = document.getElementById('errorTelemetry');
+        const usageStatsCheckbox = document.getElementById('usageStats');
+        const newUsageStats = usageStatsCheckbox ? usageStatsCheckbox.checked : userSettings.usageStats === true;
+        const oldUsageStats = userSettings.usageStats === true;
         const startWithWindowsCheckbox = document.getElementById('startWithWindows');
 
         // Get the new startWithWindows value
@@ -2514,7 +2659,8 @@ document.addEventListener('DOMContentLoaded', () => {
             keepPcAwake: keepPcAwakeCheckbox ? keepPcAwakeCheckbox.checked : true,
             uiScale: document.getElementById('uiScale') ? parseFloat(document.getElementById('uiScale').value) || 1.0 : 1.0,
             autoUpdateTools: autoUpdateToolsCheckbox ? autoUpdateToolsCheckbox.checked : true,
-            errorTelemetry: errorTelemetryCheckbox ? errorTelemetryCheckbox.checked : false,
+            errorTelemetry: newUsageStats,
+            usageStats: newUsageStats,
             startWithWindows: newStartWithWindows,
             supportPopupDisabled: userSettings.supportPopupDisabled === true,
             preferHdr: preferHdrCheckbox ? preferHdrCheckbox.checked : false,
@@ -2588,6 +2734,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        if (newUsageStats !== oldUsageStats) {
+            void setUsageStatsOnServer(newUsageStats);
+        }
+
         if (settingsModal) settingsModal.style.display = 'none';
 
         const currentStatusDiv = youtubeStatusDiv;
@@ -2642,8 +2792,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (notificationPopupCheckbox) notificationPopupCheckbox.checked = userSettings.notificationPopup;
         if (keepPcAwakeCheckbox) keepPcAwakeCheckbox.checked = userSettings.keepPcAwake;
         if (autoUpdateToolsCheckbox) autoUpdateToolsCheckbox.checked = userSettings.autoUpdateTools !== false; // Default to true
-        const errorTelemetryCheckbox = document.getElementById('errorTelemetry');
-        if (errorTelemetryCheckbox) errorTelemetryCheckbox.checked = userSettings.errorTelemetry === true;
+        const usageStatsCheckbox = document.getElementById('usageStats');
+        if (usageStatsCheckbox) usageStatsCheckbox.checked = userSettings.usageStats === true;
+        void reconcileUsageStats();
         if (speedUnitDisplaySelect) speedUnitDisplaySelect.value = userSettings.speedUnitDisplay;
         if (downloadFolderInput) downloadFolderInput.value = userSettings.downloadFolder || '';
         if (skipDeleteConfirmationCheckbox) skipDeleteConfirmationCheckbox.checked = userSettings.skipDeleteConfirmation;
@@ -2761,6 +2912,36 @@ document.addEventListener('DOMContentLoaded', () => {
     if (saveSettingsBtn) {
         saveSettingsBtn.onclick = saveSettings;
     }
+
+    // --- Settings sidebar tabs ---
+    function activateSettingsTab(tabName) {
+        const tabs = Array.from(document.querySelectorAll('.settings-nav-item'));
+        const target = tabs.find(tab => tab.dataset.settingsTab === tabName);
+        if (!target) return;
+        tabs.forEach(tab => {
+            const isActive = tab === target;
+            tab.classList.toggle('active', isActive);
+            tab.setAttribute('aria-selected', String(isActive));
+            tab.tabIndex = isActive ? 0 : -1;
+        });
+        document.querySelectorAll('.settings-panel').forEach(panel => {
+            panel.hidden = panel.dataset.settingsPanel !== tabName;
+        });
+        const panelsContainer = document.querySelector('.settings-panels');
+        if (panelsContainer) panelsContainer.scrollTop = 0;
+    }
+
+    document.querySelectorAll('.settings-nav-item').forEach((tab, index, allTabs) => {
+        tab.addEventListener('click', () => activateSettingsTab(tab.dataset.settingsTab));
+        tab.addEventListener('keydown', (event) => {
+            const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[event.key];
+            if (!step) return;
+            event.preventDefault();
+            const next = allTabs[(index + step + allTabs.length) % allTabs.length];
+            activateSettingsTab(next.dataset.settingsTab);
+            next.focus();
+        });
+    });
 
     // Subtitle mode toggle: hide languages & auto-captions when set to "none"
     function updateSubtitleVisibility() {
@@ -3156,15 +3337,14 @@ document.addEventListener('DOMContentLoaded', () => {
         closePlaylistSelectionBtn?.addEventListener('click', closeSelection);
         cancelPlaylistSelectionBtn?.addEventListener('click', closeSelection);
         playlistSelectAllBtn?.addEventListener('click', () => {
-            playlistSelectionList?.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
-                checkbox.checked = true;
+            const checkboxes = Array.from(playlistSelectionList?.querySelectorAll('input[type="checkbox"]') || []);
+            const selectAll = checkboxes.some((checkbox) => !checkbox.checked);
+            checkboxes.forEach((checkbox) => {
+                checkbox.checked = selectAll;
             });
+            updatePlaylistSelectionState();
         });
-        playlistClearSelectionBtn?.addEventListener('click', () => {
-            playlistSelectionList?.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
-                checkbox.checked = false;
-            });
-        });
+        playlistSelectionList?.addEventListener('change', updatePlaylistSelectionState);
         confirmPlaylistSelectionBtn?.addEventListener('click', async () => {
             if (!pendingPlaylistSelectionRequest) {
                 closePlaylistSelectionFlow();
@@ -3220,6 +3400,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('youtubeDownloader')) {
         showTab(activeDownloader);
         void loadRecoverableDownloads();
+        void reconcileUsageStats();
     } else if (contactUsTab) {
         showTab('youtube');
     }
@@ -3377,6 +3558,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (queuedCount) queuedCount.textContent = queuedItems;
         if (downloadingCount) downloadingCount.textContent = downloadingItems;
         if (downloadedCount) downloadedCount.textContent = completedItems;
+        [[queuedCount, queuedItems], [downloadingCount, downloadingItems], [downloadedCount, completedItems]]
+            .forEach(([counter, value]) => counter?.closest('.stat-item')?.classList.toggle('is-active', value > 0));
 
         const totalCount = downloadItemsState.size;
         if (emptyDownloadState) {
@@ -4079,6 +4262,12 @@ document.addEventListener('DOMContentLoaded', () => {
         updateDownloadStats(); // Update download badge after rendering history groups
     }
 
+    function formatHistoryTimestamp(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        return date.toLocaleDateString(undefined, { dateStyle: 'medium' });
+    }
+
     async function createHistoryItemElement(item, index, rootFolder) {
         try {
             let absPath;
@@ -4123,8 +4312,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let thumbnailSrc = item.thumbnail || LOCAL_THUMBNAIL_PLACEHOLDER;
             const escapedThumbnailSrc = escapeHtml(thumbnailSrc);
             const escapedName = escapeHtml(item.name);
-            const escapedMissingSuffix = !fileExists ? ' (Missing)' : '';
-            const escapedMtime = escapeHtml(new Date(item.mtime).toLocaleString());
+            const escapedMissingSuffix = !fileExists ? '<span class="history-missing-badge">Missing</span>' : '';
+            const escapedMtime = escapeHtml(formatHistoryTimestamp(item.mtime));
+            const escapedMtimeFull = escapeHtml(new Date(item.mtime).toLocaleString());
             const escapedSize = escapeHtml(item.size);
             const escapedAbsPath = escapeHtml(absPath);
             const escapedHistoryItemRoot = escapeHtml(historyItemRoot);
@@ -4138,22 +4328,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 div.classList.add('file-missing');
             }
             div.innerHTML = `
-                    <img class="history-thumb" src="${escapedThumbnailSrc}" alt="Thumbnail" loading="lazy">
-                    <div style="flex: 1; min-width: 0;">
-                        <div class="history-title" title="${escapedName}">${escapedName}${escapedMissingSuffix}</div>
-                        <div class="history-meta">${escapedMtime} • ${escapedSize}</div>
-              </div>
-              <div class="history-actions">
-                        <button class="history-action-btn play" title="Play Video" data-action="play" data-root="${escapedHistoryItemRoot}" data-path="${escapedAbsPath}" data-index="${index}" ${!fileExists ? 'disabled' : ''}>
-                  <i class="fas fa-play"></i>
-                </button>
-                        <button class="history-action-btn folder" title="Open Folder" data-action="folder" data-root="${escapedHistoryItemRoot}" data-path="${escapedContainingFolder}" data-index="${index}" ${!containingFolderExists ? 'disabled' : ''}>
-                  <i class="fas fa-folder-open"></i>
-                </button>
-                        <button class="history-action-btn delete" title="Delete File" data-action="delete" data-root="${escapedHistoryItemRoot}" data-path="${escapedAbsPath}" data-index="${index}">
-                  <i class="fas fa-trash"></i>
-                </button>
-              </div>`;
+                    <div class="history-thumb-wrap">
+                        <img class="history-thumb" src="${escapedThumbnailSrc}" alt="" loading="lazy">
+                    </div>
+                    <div class="history-info">
+                        <div class="history-title" title="${escapedName}">${escapedName}</div>
+                        <div class="history-meta-row">
+                            <div class="history-meta">${escapedMissingSuffix}<span title="${escapedMtimeFull}">${escapedMtime}</span><span class="history-meta-dot" aria-hidden="true">·</span><span>${escapedSize}</span></div>
+                            <div class="history-actions">
+                                <button class="history-action-btn play" title="Play Video" aria-label="Play video" data-action="play" data-root="${escapedHistoryItemRoot}" data-path="${escapedAbsPath}" data-index="${index}" ${!fileExists ? 'disabled' : ''}>
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <button class="history-action-btn folder" title="Open Folder" aria-label="Open folder" data-action="folder" data-root="${escapedHistoryItemRoot}" data-path="${escapedContainingFolder}" data-index="${index}" ${!containingFolderExists ? 'disabled' : ''}>
+                                    <i class="fas fa-folder-open"></i>
+                                </button>
+                                <button class="history-action-btn delete" title="Delete File" aria-label="Delete file" data-action="delete" data-root="${escapedHistoryItemRoot}" data-path="${escapedAbsPath}" data-index="${index}">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>`;
             const historyThumb = div.querySelector('.history-thumb');
             if (historyThumb) {
                 historyThumb.addEventListener('error', () => {
@@ -4199,97 +4393,28 @@ document.addEventListener('DOMContentLoaded', () => {
             const videoCount = folderItem.videoCount || (folderItem.videos ? folderItem.videos.length : 0);
             const folderName = folderItem.name || 'Playlist Folder';
             const escapedFolderName = escapeHtml(folderName);
-            const escapedFolderMtime = escapeHtml(new Date(folderItem.mtime).toLocaleString());
+            const escapedFolderMtime = escapeHtml(formatHistoryTimestamp(folderItem.mtime));
+            const escapedFolderMtimeFull = escapeHtml(new Date(folderItem.mtime).toLocaleString());
             const escapedFolderSize = escapeHtml(folderItem.size);
 
             folderDiv.innerHTML = `
                 <div class="history-folder-header">
-                    <button class="history-folder-toggle" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 8px; color: var(--text-color);">
-                        <i class="fas fa-chevron-right" style="transition: transform 0.2s;"></i>
+                    <button class="history-folder-toggle" type="button">
+                        <i class="fas fa-chevron-right" aria-hidden="true"></i>
                     </button>
-                    <i class="fas fa-folder" style="margin-right: 8px; color: #4a90e2;"></i>
-                    <div style="flex: 1; min-width: 0;">
-                        <div class="history-title" style="font-weight: 600;">${escapedFolderName}</div>
-                        <div class="history-meta">${escapedFolderMtime} • ${escapedFolderSize} • ${videoCount} video${videoCount !== 1 ? 's' : ''}</div>
+                    <span class="history-folder-icon" aria-hidden="true"><i class="fas fa-folder"></i></span>
+                    <div class="history-folder-info">
+                        <div class="history-title">${escapedFolderName}</div>
+                        <div class="history-meta"><span title="${escapedFolderMtimeFull}">${escapedFolderMtime}</span>${escapedFolderSize ? `<span class="history-meta-dot" aria-hidden="true">·</span><span>${escapedFolderSize}</span>` : ''}</div>
                     </div>
+                    <span class="history-folder-count">${videoCount} video${videoCount !== 1 ? 's' : ''}</span>
                 </div>
-                <div class="history-folder-content">
-                    <!-- Videos will be inserted here when expanded -->
-                </div>
+                <div class="history-folder-content"></div>
             `;
 
-            // Make the entire folder div a card with proper styling
-            folderDiv.style.cssText = `
-                background: var(--card-bg);
-                border-radius: 12px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                margin-bottom: 12px;
-                overflow: hidden;
-                grid-column: 1 / -1;
-                border: 1px solid var(--border-color);
-            `;
-
-            // Style the header
             const header = folderDiv.querySelector('.history-folder-header');
-            header.style.cssText = `
-                display: flex;
-                align-items: center;
-                padding: 20px 24px;
-                cursor: pointer;
-                background: var(--input-bg);
-                border-bottom: 1px solid var(--border-color);
-                transition: background-color 0.2s;
-                gap: 20px;
-            `;
             header.setAttribute('aria-expanded', 'false');
-            header.addEventListener('mouseenter', () => { header.style.background = 'var(--hover-bg, rgba(155, 17, 30, 0.05))'; });
-            header.addEventListener('mouseleave', () => { header.style.background = 'var(--input-bg)'; });
-
-            // Larger folder icon
-            const folderIcon = header.querySelector('.fa-folder');
-            if (folderIcon) {
-                folderIcon.className = 'fas fa-folder';
-                folderIcon.style.cssText = `
-                    font-size: 28px;
-                    color: #4a90e2;
-                    background: rgba(74, 144, 226, 0.1);
-                    padding: 12px;
-                    border-radius: 12px;
-                    min-width: 52px;
-                    text-align: center;
-                `;
-            }
-
-            // Refine title and meta
-            const titleEl = header.querySelector('.history-title');
-            if (titleEl) {
-                titleEl.parentElement.style.flex = '1';
-                titleEl.style.fontSize = '1.15rem';
-                titleEl.style.fontWeight = '600';
-                titleEl.style.marginBottom = '6px';
-                titleEl.style.color = 'var(--text-color)';
-                titleEl.parentElement.style.display = 'flex';
-                titleEl.parentElement.style.flexDirection = 'column';
-                titleEl.parentElement.style.justifyContent = 'center';
-            }
-
-            // Meta styling
-            const metaEl = header.querySelector('.history-date');
-            if (metaEl) {
-                metaEl.style.fontSize = '0.9rem';
-                metaEl.style.color = 'var(--text-muted, #7f8c8d)';
-            }
-
-            // Style the content container
             const contentDiv = folderDiv.querySelector('.history-folder-content');
-            contentDiv.style.cssText = `
-                display: none;
-                padding: 12px;
-                background: var(--card-bg);
-                border-top: 1px solid var(--border-color);
-                flex-direction: column;
-                gap: 8px;
-            `;
 
             const toggleExpansion = async (e) => {
                 // Don't toggle expansion if in bulk mode or if clicking checkbox
@@ -4308,27 +4433,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Pass rootFolder to correctly resolve paths if needed
                             const videoElement = await createHistoryItemElement(video, `${index}_${i}`, rootFolder);
                             if (videoElement) {
-                                videoElement.style.marginLeft = '0';
-                                videoElement.style.width = '100%';
-                                videoElement.style.marginBottom = '6px';
                                 contentDiv.appendChild(videoElement);
                             }
-                        }
-                        // Remove margin from last item
-                        if (contentDiv.lastElementChild) {
-                            contentDiv.lastElementChild.style.marginBottom = '0';
                         }
                     }
                 }
 
                 folderDiv.dataset.expanded = isExpanded ? 'false' : 'true';
-                contentDiv.style.display = isExpanded ? 'none' : 'block';
                 header.setAttribute('aria-expanded', String(!isExpanded));
-
-                const chevron = folderDiv.querySelector('.history-folder-toggle i');
-                if (chevron) {
-                    chevron.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(90deg)';
-                }
             };
 
             // Toggle on click of the toggle button OR the header
@@ -4766,14 +4878,14 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
 
             modal.innerHTML = `
-                <div class="modal-content close-confirmation-modal" style="padding: 2rem;">
-                    <div class="confirmation-icon" style="box-shadow: 0 0 20px rgba(239, 68, 68, 0.35);">
+                <div class="modal-content close-confirmation-modal clear-history-modal">
+                    <div class="confirmation-icon">
                         <i class="fas fa-trash-alt"></i>
                     </div>
-                    <h2 style="margin: 0 0 0.5rem;">Clear History</h2>
-                    <p style="color: var(--text-color); opacity: 0.8; margin-bottom: 1.75rem; line-height: 1.5; font-size: 0.95rem;">
+                    <h2 class="clear-history-title">Clear History</h2>
+                    <p class="clear-history-text">
                         What would you like to clear?<br>
-                        <small style="opacity: 0.7;">This action cannot be undone.</small>
+                        <small>This action cannot be undone.</small>
                     </p>
                     <div class="close-actions-grid">
                         <button id="clearTabBtn" class="action-btn primary-btn-glow">
@@ -5171,21 +5283,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===== UPDATE CHECK & CHANGELOG SYSTEM =====
 const UPDATE_LAST_SEEN_KEY = 'gvl_lastSeenVersion';
 const UPDATE_POPUP_DELAY_MS = 2500;
-const DEFAULT_APP_VERSION = '3.2.6';
+const DEFAULT_APP_VERSION = '3.2.7';
 const FALLBACK_APP_CHANGELOG = {
     version: DEFAULT_APP_VERSION,
-    title: "Download Recovery Hotfix v3.2.6",
+    title: "Cookie Session Hotfix v3.2.7",
     date: 'September 2026',
     required: false,
     badge: 'Hotfix',
-    summary: 'X removes items immediately and keeps them hidden if the server connection drops. Retry sits beside X as an icon.',
+    summary: 'Cookie imports and downloads now use one saved file. New guidance explains when a website rejects an expired or changed browser session.',
     items: [
-        { icon: 'fa-plug', title: 'Removal Survives Connection Drops', desc: 'Dismissed items stay hidden across restarts while the app finishes removing their saved queue entries in the background.' },
-        { icon: 'fa-rotate-right', title: 'Reliable Retry', desc: 'Use the retry icon beside X to start a new attempt. If an attempt fails again, its error stays visible.' },
-        { icon: 'fa-xmark', title: 'Remove Means Remove', desc: 'The X and Cancel buttons stop unfinished work and remove its saved queue entry, including after a restart.' },
-        { icon: 'fa-list-check', title: 'Clearer Failure Controls', desc: 'Failed items show a short explanation, expandable error details, and a retry icon beside X. Failed downloads no longer count as queued.' },
-        { icon: 'fa-clock-rotate-left', title: 'Consistent Recovery', desc: 'Interrupted work returns as resumable. Cancelled items stay removed, and failed resumed downloads can be retried.' },
-        { icon: 'fa-sliders', title: 'Retry Settings Respected', desc: 'Automatic retries now follow your Smart Retry setting and attempt limit.' }
+        { icon: 'fa-cookie-bite', title: 'One Cookie File', desc: 'Imports, playlist previews, metadata, and downloads use the same saved cookies.txt. Obsolete app-profile copies are consolidated.' },
+        { icon: 'fa-circle-info', title: 'Clearer Session Errors', desc: 'A saved file can still be rejected by the website. Session errors now explain that cookies may have expired or changed and offer Import Fresh Cookies.' },
+        { icon: 'fa-list-check', title: 'YouTube Export Steps', desc: 'The cookies helper includes private-window export instructions to reduce cookie rotation, and explains that the robots.txt page text is not the cookie file.' },
+        { icon: 'fa-file-circle-check', title: 'Safer Imports', desc: 'Malformed cookie files are rejected without replacing your saved import. Valid HttpOnly cookies are supported, and new imports are available immediately.' }
     ]
 };
 let updatePopupTimer = null;

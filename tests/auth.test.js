@@ -47,16 +47,14 @@ test("isValidToken uses exact token matching", () => {
 
 test("auth middleware allows public static GET requests", async () => {
   const middleware = createAuthMiddleware("expected-token");
-  const req = { method: "GET", path: "/index.html", headers: {} };
-  const res = createResponseRecorder();
-
-  let nextCalled = false;
-  await middleware(req, res, () => {
-    nextCalled = true;
-  });
-
-  assert.equal(nextCalled, true);
-  assert.equal(res.statusCode, 200);
+  for (const requestPath of ["/index.html", "/favicon.ico"]) {
+    const req = { method: "GET", path: requestPath, headers: {} };
+    const res = createResponseRecorder();
+    let nextCalled = false;
+    await middleware(req, res, () => { nextCalled = true; });
+    assert.equal(nextCalled, true, requestPath);
+    assert.equal(res.statusCode, 200);
+  }
 });
 
 test("auth middleware blocks protected requests without a token", async () => {

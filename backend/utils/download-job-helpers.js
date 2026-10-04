@@ -150,15 +150,16 @@ function createTransferSpeedEstimator({
 
 function sanitizePathSegment(value, fallback = "unknown") {
   const normalized = String(value || "")
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
+    .replace(/[<>:"/\\|?*%\u0000-\u001f]/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim().substring(0, 120).replace(/[. ]+$/g, "");
 
   if (!normalized) {
     return fallback;
   }
 
-  return normalized.substring(0, 120);
+  return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(normalized)
+    ? `_${normalized}` : normalized;
 }
 
 function getSiteKeyFromUrl(videoUrl) {

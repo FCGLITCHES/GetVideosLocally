@@ -8,7 +8,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078D6.svg)](https://www.microsoft.com/windows)
-[![Electron](https://img.shields.io/badge/Electron-42.1.0-47848F.svg)](https://www.electronjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-42.11.9-47848F.svg)](https://www.electronjs.org/)
 [![yt-dlp](https://img.shields.io/badge/yt--dlp-latest-red.svg)](https://github.com/yt-dlp/yt-dlp)
 [![Latest release](https://img.shields.io/github/v/release/FCGLITCHES/GetVideosLocally)](https://github.com/FCGLITCHES/GetVideosLocally/releases)
 

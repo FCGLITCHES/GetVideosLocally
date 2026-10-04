@@ -4,12 +4,26 @@ const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, powerSaveBlocker,
 // Set application name
 app.setName('GetVideosLocally');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
-const APP_USER_MODEL_ID = 'com.getvideoslocally.app';
-const WINDOWS_BRAND_ICON_PATH = path.join(__dirname, 'public', 'Logo1.ico');
+const APP_USER_MODEL_ID = app.isPackaged
+  ? 'com.getvideoslocally.app'
+  : 'com.getvideoslocally.app.dev';
+const WINDOWS_BRAND_ICON_PATH = app.isPackaged
+  ? path.join(process.resourcesPath, 'assets', 'Logo1.ico')
+  : path.join(__dirname, 'public', 'Logo1.ico');
 
 if (process.platform === 'win32') {
   app.setAppUserModelId(APP_USER_MODEL_ID);
+  app.on('browser-window-created', (_, win) => {
+    win.setAppDetails({
+      appId: APP_USER_MODEL_ID,
+      appIconPath: WINDOWS_BRAND_ICON_PATH,
+      appIconIndex: 0,
+      relaunchCommand: `"${process.execPath}"${app.isPackaged ? '' : ` "${app.getAppPath()}"`}`,
+      relaunchDisplayName: 'GetVideosLocally'
+    });
+  });
 }
 
 function isBrokenPipeError(error) {
@@ -83,6 +97,7 @@ const net = require('net'); // Required for server readiness check
 const { validateDownloadPath, isDownloadsRoot } = require('./backend/utils/path-validator');
 const { createDesktopFileActions } = require('./backend/services/desktop-file-actions');
 const desktopFileActions = createDesktopFileActions({ shell });
+const { getCookiesFilePath, isValidCookiesText } = require('./backend/utils/cookie-storage');
 
 let mainWindow;
 let cookieWindow = null; // Track the cookie helper window
@@ -116,14 +131,16 @@ if (isDev) {
 }
 
 // Per-user cookies always live under app data. We do not ship shared cookies in the app bundle.
-resourcesCookiesPath = path.join(app.getPath('userData'), 'cookies');
+// The folder name must not be "cookies": Windows paths are case-insensitive, so it would be the
+// same path as Chromium's legacy "Cookies" store and get renamed away on startup.
+resourcesCookiesPath = path.dirname(getCookiesFilePath(app.getPath('userData')));
 
 // Safety: Never allow app.asar in the paths for external tools/files
 if (resourcesBinPath.includes('app.asar')) {
   resourcesBinPath = path.join(process.resourcesPath, 'bin');
 }
 if (resourcesCookiesPath.includes('app.asar')) {
-  resourcesCookiesPath = path.join(app.getPath('userData'), 'cookies');
+  resourcesCookiesPath = path.dirname(getCookiesFilePath(app.getPath('userData')));
 }
 
 console.log('[electron-main.js] FINAL resourcesBinPath:', resourcesBinPath);
@@ -205,10 +222,48 @@ function waitForServer(port, maxAttempts = 100) {
   });
 }
 
+function isUsableCookiesFile(filePath) {
+  try {
+    const stats = fs.statSync(filePath);
+    return stats.isFile() && isValidCookiesText(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
+function adoptLegacyCookiesFile(sourcePath) {
+  const targetPath = path.join(resourcesCookiesPath, 'cookies.txt');
+  if (isUsableCookiesFile(targetPath) || !isUsableCookiesFile(sourcePath)) return false;
+  fs.mkdirSync(resourcesCookiesPath, { recursive: true });
+  fs.renameSync(sourcePath, targetPath);
+  console.log(`[Startup] Restored imported cookies from: ${sourcePath}`);
+  return true;
+}
+
 function migrateLegacyChromiumCookiesDirectory() {
   const userDataPath = app.getPath('userData');
   const cookiesStorePath = path.join(userDataPath, 'Cookies');
   try {
+    const candidates = [userDataPath, path.join(userDataPath, 'cookies')];
+    candidates.push(...fs.readdirSync(userDataPath)
+      .filter((name) => /^Cookies\.legacy-dir\.\d+$/i.test(name))
+      .sort((a, b) => Number(b.split('.').pop()) - Number(a.split('.').pop()))
+      .map((name) => path.join(userDataPath, name)));
+    // Older builds kept cookies.txt in userData/cookies, and earlier startups renamed that folder
+    // to Cookies.legacy-dir.<time>. Recover the newest imported file once, before the new folder exists.
+    if (!fs.existsSync(resourcesCookiesPath)) {
+      candidates.some((dir) => adoptLegacyCookiesFile(path.join(dir, 'cookies.txt')));
+    }
+
+    const targetPath = getCookiesFilePath(userDataPath);
+    // Keep only the canonical import, including an explicitly cleared file.
+    if (isUsableCookiesFile(targetPath) || (fs.existsSync(targetPath) && fs.statSync(targetPath).size === 0)) {
+      for (const dir of candidates) {
+        const legacyPath = path.join(dir, 'cookies.txt');
+        if (fs.existsSync(legacyPath) && fs.statSync(legacyPath).isFile()) fs.unlinkSync(legacyPath);
+      }
+    }
+
     if (!fs.existsSync(cookiesStorePath)) return;
     const stats = fs.statSync(cookiesStorePath);
     if (!stats.isDirectory()) return;
@@ -385,6 +440,36 @@ function destroyTrayIcon() {
   }
 }
 
+function secureWindowNavigation(win) {
+  const ownFileUrl = pathToFileURL(path.join(__dirname, 'public', 'cookies.html')).href;
+  const isTrustedUrl = (value) => {
+    try {
+      const parsed = new URL(value);
+      return parsed.origin === `http://127.0.0.1:${serverPort}` ||
+        (win === cookieWindow && value === ownFileUrl);
+    } catch (_) { return false; }
+  };
+  const openExternal = (value) => {
+    try {
+      if (['http:', 'https:', 'mailto:'].includes(new URL(value).protocol)) {
+        shell.openExternal(value).catch(error => console.warn('Could not open link:', error.message));
+      }
+    } catch (_) { /* Ignore malformed links. */ }
+  };
+  for (const eventName of ['will-navigate', 'will-redirect']) {
+    win.webContents.on(eventName, (event, value) => {
+      if (!isTrustedUrl(value)) { event.preventDefault(); openExternal(value); }
+    });
+  }
+  win.webContents.on('will-attach-webview', event => event.preventDefault());
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isTrustedUrl(url)) return { action: 'allow' };
+    openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('did-create-window', child => secureWindowNavigation(child));
+}
+
 async function createWindow() {
   const lastState = loadWindowState();
 
@@ -403,7 +488,7 @@ async function createWindow() {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        sandbox: false, // TEMPORARY: preload requires CommonJS - track as follow-up task
+        sandbox: true,
         devTools: !app.isPackaged,
         preload: path.join(__dirname, 'preload.js'),
         backgroundThrottling: false // CRITICAL: Prevent freezing when minimized/hidden
@@ -418,6 +503,7 @@ async function createWindow() {
     }
 
     mainWindow = new BrowserWindow(winOptions);
+    secureWindowNavigation(mainWindow);
 
     // Wait for server to be truly ready before loading
     console.log('Waiting for server to be ready...');
@@ -432,29 +518,12 @@ async function createWindow() {
     if (lastState.isMaximized) mainWindow.maximize();
     if (lastState.isFullScreen) mainWindow.setFullScreen(true);
 
-    // Safety: Prevent navigation to untrusted external URLs
-    mainWindow.webContents.on('will-navigate', (event, url) => {
-      const parsedUrl = new URL(url);
-      if (parsedUrl.hostname !== 'localhost' && parsedUrl.hostname !== '127.0.0.1') {
-        event.preventDefault();
-        shell.openExternal(url); // Open external links in default browser
-      }
-    });
-
-    // Prevent new windows from being opened except for sanctioned ones
-    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-      const parsedUrl = new URL(url);
-      if (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') {
-        return { action: 'allow' };
-      }
-      shell.openExternal(url);
-      return { action: 'deny' };
-    });
 
   } catch (error) {
     console.error('Failed to create window:', error);
     dialog.showErrorBox("Startup Error", `Failed to start application: ${error.message}`);
     app.quit();
+    return;
   }
 
   mainWindow.on('closed', () => {
@@ -466,6 +535,9 @@ async function createWindow() {
 
     // If already quitting, allow close
     if (isQuitting) return;
+    // The native close must be cancelled before the first await.
+    event.preventDefault();
+    const closingWindow = mainWindow;
 
     let currentActiveDownloadCount = activeDownloadCount;
     if (mainWindow?.webContents && !mainWindow.webContents.isDestroyed()) {
@@ -483,13 +555,14 @@ async function createWindow() {
       }
     }
 
+    if (!closingWindow || closingWindow.isDestroyed()) return;
     if (currentActiveDownloadCount > 0) {
-      event.preventDefault();
       mainWindow.webContents.send('show-close-confirmation', currentActiveDownloadCount);
       return;
     }
 
     isQuitting = true;
+    closingWindow.close();
   });
 
   mainWindow.on('move', () => {
@@ -590,8 +663,10 @@ function startServer() {
           YTDLP_PATH: ytdlpPath,
           FFMPEG_PATH: ffmpegPath,
           NODE_BINARY: nodeBinaryPath,
-          COOKIES_DIR: resourcesCookiesPath,
           USER_DATA_PATH: app.getPath('userData'),
+          // Usage statistics (opt-in) only send from packaged builds.
+          GVL_APP_PACKAGED: app.isPackaged ? '1' : '0',
+          GVL_APP_LOCALE: app.getLocale(),
           ELECTRON_RUN_AS_NODE: '1'
         }
       }
@@ -616,7 +691,7 @@ function startServer() {
 
     // Wait for server to be ready
     serverProcess.on('message', (msg) => {
-      console.log('Message from server process:', msg);
+      console.log('Message from server process:', msg.type, msg.port || '');
       if (msg.type === 'server_ready') {
         serverPort = msg.port;
         serverToken = msg.serverToken || null;
@@ -654,116 +729,38 @@ app.on('window-all-closed', () => {
   }
 });
 
+let quitCleanupStarted = false;
 app.on('before-quit', (event) => {
-  // Prevent multiple cleanup attempts
-  if (isQuitting) {
-    console.log('Cleanup already in progress, ignoring duplicate before-quit event');
+  if (quitCleanupStarted) return;
+  event.preventDefault();
+  quitCleanupStarted = true;
+  isQuitting = true;
+  if (powerSaveBlockerId !== null && powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+    powerSaveBlocker.stop(powerSaveBlockerId);
+    powerSaveBlockerId = null;
+  }
+  const exitingProcess = serverProcess;
+  if (!exitingProcess || exitingProcess.exitCode !== null || exitingProcess.signalCode !== null) {
+    app.quit();
     return;
   }
-
-  // Prevent default quit behavior so we can clean up properly
-  event.preventDefault();
-  isQuitting = true;
-  console.log('App before-quit event triggered. Cleaning up...');
-
-  // Stop power save blocker
-  if (powerSaveBlockerId !== null && powerSaveBlocker.isStarted(powerSaveBlockerId)) {
-    try {
-      powerSaveBlocker.stop(powerSaveBlockerId);
-      console.log('Power save blocker stopped');
-      powerSaveBlockerId = null;
-    } catch (e) {
-      console.error('Error stopping power save blocker:', e);
-    }
-  }
-
-  const cleanupAndQuit = async () => {
-    try {
-      if (!serverProcess) {
-        console.log('No server process to clean up');
-        app.quit();
-        return;
-      }
-
-      // Check if process is already dead
-      if (serverProcess.killed) {
-        console.log('Server process already killed');
-        serverProcess = null;
-        app.quit();
-        return;
-      }
-
-      console.log('Terminating server process and waiting for cleanup...');
-
-      // Send SIGTERM to allow graceful shutdown
-      let processExited = false;
-      try {
-        const killed = serverProcess.kill('SIGTERM');
-        if (!killed) {
-          console.log('Failed to send SIGTERM, server may already be exiting');
-          serverProcess = null;
-          app.quit();
-          return;
-        }
-      } catch (e) {
-        console.log('Error sending SIGTERM (process may already be dead):', e.message);
-        serverProcess = null;
-        app.quit();
-        return;
-      }
-
-      // Wait for server process to exit (up to 12 seconds - server has 10s graceful shutdown timeout)
-      const waitForExit = new Promise((resolve) => {
-        // Check if process already exited before attaching listener
-        if (serverProcess.killed) {
-          resolve();
-          return;
-        }
-
-        const timeout = setTimeout(() => {
-          if (!processExited) {
-            console.warn('Server process did not exit gracefully within timeout, forcing termination...');
-            if (serverProcess && !serverProcess.killed) {
-              // Force kill - SIGKILL works on both Windows and Unix
-              try {
-                serverProcess.kill('SIGKILL');
-                console.log('Force killed server process');
-              } catch (e) {
-                console.error('Error force killing server process:', e);
-              }
-            }
-            processExited = true;
-            resolve();
-          }
-        }, 12000);
-
-        serverProcess.once('exit', (code, signal) => {
-          if (!processExited) {
-            clearTimeout(timeout);
-            console.log(`Server process exited with code ${code} and signal ${signal}`);
-            processExited = true;
-            resolve();
-          }
-        });
-      });
-
-      await waitForExit;
-      serverProcess = null;
-
-      // Small delay to ensure all child processes are cleaned up
-      setTimeout(() => {
-        console.log('Cleanup complete, quitting application');
-        app.quit();
-      }, 500);
-    } catch (error) {
-      console.error('Error during cleanup:', error);
-      // Ensure we quit even if cleanup fails
-      serverProcess = null;
-      app.quit();
-    }
-  };
-
-  cleanupAndQuit();
+  // Windows kill('SIGTERM') terminates immediately. Ask the authenticated
+  // backend to persist its state, then wait for the actual exit event.
+  const timeout = setTimeout(() => {
+    if (exitingProcess.exitCode === null && exitingProcess.signalCode === null) exitingProcess.kill();
+  }, 12000);
+  exitingProcess.once('exit', () => {
+    clearTimeout(timeout);
+    serverProcess = null;
+    app.quit();
+  });
+  const request = require('http').request({
+    hostname: '127.0.0.1', port: serverPort, path: '/shutdown', method: 'POST',
+    headers: { 'X-Server-Token': serverToken || '' }, timeout: 5000,
+  }, response => response.resume());
+  request.on('error', error => console.warn('Backend shutdown request failed:', error.message));
+  request.on('timeout', () => request.destroy());
+  request.end();
 });
 
 app.on('activate', () => {
@@ -786,9 +783,14 @@ app.on('second-instance', () => {
 });
 
 function assertTrustedIpcSender(event) {
-  if (event.sender === mainWindow?.webContents) return;
-
+  if (!event.sender || !event.senderFrame ||
+      event.senderFrame !== event.sender.mainFrame ||
+      !BrowserWindow.fromWebContents(event.sender)) {
+    throw new Error('Unauthorized IPC caller');
+  }
   const url = event.senderFrame?.url || '';
+  if (event.sender === cookieWindow?.webContents &&
+      url === pathToFileURL(path.join(__dirname, 'public', 'cookies.html')).href) return;
   try {
     const parsed = new URL(url);
     if (parsed.origin === `http://127.0.0.1:${serverPort}`) return;
@@ -799,7 +801,8 @@ function assertTrustedIpcSender(event) {
   throw new Error('Unauthorized IPC caller');
 }
 
-ipcMain.handle('dialog:openFolder', async () => {
+ipcMain.handle('dialog:openFolder', async (event) => {
+  assertTrustedIpcSender(event);
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory']
   });
@@ -807,13 +810,14 @@ ipcMain.handle('dialog:openFolder', async () => {
   return result.filePaths[0];
 });
 
-ipcMain.handle('getDefaultDownloadFolder', async () => {
+ipcMain.handle('getDefaultDownloadFolder', async (event) => {
+  assertTrustedIpcSender(event);
   return app.getPath('downloads');
 });
 
 ipcMain.handle('openPathInExplorer', async (event, rootPath, folderPath) => {
+  assertTrustedIpcSender(event);
   try {
-    assertTrustedIpcSender(event);
     return await desktopFileActions.openPathInExplorer(rootPath, folderPath);
   } catch (error) {
     console.error('[openPathInExplorer]', error.message);
@@ -822,8 +826,8 @@ ipcMain.handle('openPathInExplorer', async (event, rootPath, folderPath) => {
 });
 
 ipcMain.handle('open-media-file', async (event, rootPath, filePath) => {
+  assertTrustedIpcSender(event);
   try {
-    assertTrustedIpcSender(event);
     return await desktopFileActions.openMediaFile(rootPath, filePath);
   } catch (error) {
     console.error('[open-media-file]', error.message);
@@ -831,15 +835,31 @@ ipcMain.handle('open-media-file', async (event, rootPath, filePath) => {
   }
 });
 
-ipcMain.handle('readClipboardText', async () => {
+ipcMain.handle('readClipboardText', async (event) => {
+  assertTrustedIpcSender(event);
   return clipboard.readText();
+});
+
+ipcMain.handle('writeClipboardText', async (event, text) => {
+  assertTrustedIpcSender(event);
+  if (typeof text !== 'string') throw new TypeError('Clipboard text must be a string');
+  clipboard.writeText(text);
+  return { success: true };
 });
 
 
 
 // Save cookies.txt to per-user app data.
 ipcMain.handle('save-cookies-txt', async (event, content) => {
+  assertTrustedIpcSender(event);
   try {
+    if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 5 * 1024 * 1024) {
+      throw new TypeError('Cookies must be text no larger than 5 MB');
+    }
+    content = content.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    if (content.trim() && !isValidCookiesText(content)) {
+      throw new TypeError('Import a valid Netscape cookies.txt file');
+    }
     const cookiesDir = resourcesCookiesPath;
     const cookiesPath = path.join(cookiesDir, 'cookies.txt');
 
@@ -856,7 +876,8 @@ ipcMain.handle('save-cookies-txt', async (event, content) => {
 });
 
 // Read cookies.txt from per-user app data.
-ipcMain.handle('get-cookies-txt', async () => {
+ipcMain.handle('get-cookies-txt', async (event) => {
+  assertTrustedIpcSender(event);
   try {
     const cookiesDir = resourcesCookiesPath;
     const cookiesPath = path.join(cookiesDir, 'cookies.txt');
@@ -905,7 +926,8 @@ function saveCookieWindowState(win) {
 }
 
 // Enhanced cookie helper with window state persistence
-ipcMain.handle('open-cookies-helper', async () => {
+ipcMain.handle('open-cookies-helper', async (event) => {
+  assertTrustedIpcSender(event);
   // Close existing cookie window if open
   if (cookieWindow && !cookieWindow.isDestroyed()) {
     cookieWindow.close();
@@ -920,7 +942,7 @@ ipcMain.handle('open-cookies-helper', async () => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false, // TEMPORARY: preload requires CommonJS
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js')
     },
     parent: mainWindow,
@@ -937,24 +959,7 @@ ipcMain.handle('open-cookies-helper', async () => {
 
   win.setMenuBarVisibility(false);
 
-  // Handle external links - open in default browser (same as main window)
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    const parsedUrl = new URL(url);
-    if (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') {
-      return { action: 'allow' };
-    }
-    shell.openExternal(url); // Open external URLs in default browser
-    return { action: 'deny' }; // Prevent opening in Electron window
-  });
-
-  // Also handle navigation to external URLs
-  win.webContents.on('will-navigate', (event, url) => {
-    const parsedUrl = new URL(url);
-    if (parsedUrl.hostname !== 'localhost' && parsedUrl.hostname !== '127.0.0.1' && !parsedUrl.protocol.startsWith('file:')) {
-      event.preventDefault();
-      shell.openExternal(url); // Open external URLs in default browser
-    }
-  });
+  secureWindowNavigation(win);
 
   win.on('resize', () => saveCookieWindowState(win));
   win.on('move', () => saveCookieWindowState(win));
@@ -971,7 +976,8 @@ ipcMain.handle('open-cookies-helper', async () => {
 });
 
 // Handler to close the cookie window
-ipcMain.handle('close-cookie-window', async () => {
+ipcMain.handle('close-cookie-window', async (event) => {
+  assertTrustedIpcSender(event);
   if (cookieWindow && !cookieWindow.isDestroyed()) {
     cookieWindow.close();
     // Note: The 'closed' event handler will handle showing the main window and clearing the reference
@@ -981,7 +987,8 @@ ipcMain.handle('close-cookie-window', async () => {
 });
 
 // Add file upload handler for cookies
-ipcMain.handle('upload-cookies-file', async () => {
+ipcMain.handle('upload-cookies-file', async (event) => {
+  assertTrustedIpcSender(event);
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
@@ -998,14 +1005,21 @@ ipcMain.handle('upload-cookies-file', async () => {
   }
 });
 
-ipcMain.handle('getPath', (_, name) => app.getPath(name));
-ipcMain.handle('get-userdata-path', async () => app.getPath('userData'));
+ipcMain.handle('getPath', (event, name) => {
+  assertTrustedIpcSender(event);
+  return app.getPath(name);
+});
+ipcMain.handle('get-userdata-path', async (event) => {
+  assertTrustedIpcSender(event);
+  return app.getPath('userData');
+});
 
 // ------------------------------------------------------------------
 //  NEW handler: scans the entire download folder and returns
 //  every video file with the correct type for each history sub-tab
 // ------------------------------------------------------------------
-ipcMain.handle('list-download-folder', async (_, folderPath) => {
+ipcMain.handle('list-download-folder', async (event, folderPath) => {
+  assertTrustedIpcSender(event);
   const glob = require('glob');
   const fs = require('fs');
   const path = require('path');
@@ -1097,14 +1111,15 @@ ipcMain.handle('list-download-folder', async (_, folderPath) => {
 });
 
 // NEW: IPC to get containing folder (dirname) from a file path
-ipcMain.handle('get-dirname', async (_, filePath) => {
+ipcMain.handle('get-dirname', async (event, filePath) => {
+  assertTrustedIpcSender(event);
   return path.dirname(filePath);
 });
 
 // Delete file handler - Recycle Bin only, no permanent deletion fallback.
 ipcMain.handle('delete-file', async (event, rootPath, filePath) => {
+  assertTrustedIpcSender(event);
   try {
-    assertTrustedIpcSender(event);
     const resolved = validateDownloadPath(rootPath, filePath);
     const stats = fs.statSync(resolved);
 
@@ -1124,8 +1139,8 @@ ipcMain.handle('delete-file', async (event, rootPath, filePath) => {
 
 // Delete folder handler - Recycle Bin only, no permanent deletion fallback.
 ipcMain.handle('delete-folder', async (event, rootPath, folderPath) => {
+  assertTrustedIpcSender(event);
   try {
-    assertTrustedIpcSender(event);
     const resolved = validateDownloadPath(rootPath, folderPath);
     const stats = fs.statSync(resolved);
 
@@ -1150,6 +1165,7 @@ ipcMain.handle('delete-folder', async (event, rootPath, folderPath) => {
 
 // Path resolver handler
 ipcMain.handle('resolve-path', async (event, downloadFolder, relativePath) => {
+  assertTrustedIpcSender(event);
   try {
     const fullPath = path.join(downloadFolder, relativePath);
     const resolvedPath = path.resolve(fullPath);
@@ -1163,6 +1179,7 @@ ipcMain.handle('resolve-path', async (event, downloadFolder, relativePath) => {
 
 // Check if path exists handler
 ipcMain.handle('path-exists', async (event, filePath) => {
+  assertTrustedIpcSender(event);
   try {
     const exists = fs.existsSync(filePath);
     console.log(`[path-exists] ${filePath} exists: ${exists}`);
@@ -1173,7 +1190,8 @@ ipcMain.handle('path-exists', async (event, filePath) => {
   }
 });
 
-ipcMain.handle('test-folder-access', async (_, folderPath) => {
+ipcMain.handle('test-folder-access', async (event, folderPath) => {
+  assertTrustedIpcSender(event);
   try {
     if (!folderPath || typeof folderPath !== 'string') {
       return { success: false, error: 'No folder path provided.' };
@@ -1194,6 +1212,7 @@ ipcMain.handle('test-folder-access', async (_, folderPath) => {
 
 // Update the existing normalize-path handler to be more robust
 ipcMain.handle('normalize-path', async (event, filePath) => {
+  assertTrustedIpcSender(event);
   try {
     const normalized = path.normalize(filePath);
     console.log(`[normalize-path] ${filePath} -> ${normalized}`);
@@ -1206,7 +1225,8 @@ ipcMain.handle('normalize-path', async (event, filePath) => {
 
 // Power Save Blocker handlers
 
-ipcMain.handle('start-power-save-blocker', async () => {
+ipcMain.handle('start-power-save-blocker', async (event) => {
+  assertTrustedIpcSender(event);
   try {
     // If we have no ID or the blocker with current ID isn't running
     if (powerSaveBlockerId === null || !powerSaveBlocker.isStarted(powerSaveBlockerId)) {
@@ -1235,7 +1255,8 @@ ipcMain.handle('start-power-save-blocker', async () => {
   }
 });
 
-ipcMain.handle('stop-power-save-blocker', async () => {
+ipcMain.handle('stop-power-save-blocker', async (event) => {
+  assertTrustedIpcSender(event);
   try {
     if (powerSaveBlockerId !== null && powerSaveBlocker.isStarted(powerSaveBlockerId)) {
       powerSaveBlocker.stop(powerSaveBlockerId);
@@ -1257,7 +1278,8 @@ ipcMain.handle('stop-power-save-blocker', async () => {
 // --- Auto-Launch (Windows Startup) Handlers ---
 
 // Get current auto-launch status
-ipcMain.handle('get-auto-launch-status', async () => {
+ipcMain.handle('get-auto-launch-status', async (event) => {
+  assertTrustedIpcSender(event);
   try {
     const isEnabled = await getAutoLauncher().isEnabled();
     console.log('[auto-launch] Current status:', isEnabled);
@@ -1269,7 +1291,8 @@ ipcMain.handle('get-auto-launch-status', async () => {
 });
 
 // Enable auto-launch (add to Windows startup)
-ipcMain.handle('enable-auto-launch', async () => {
+ipcMain.handle('enable-auto-launch', async (event) => {
+  assertTrustedIpcSender(event);
   try {
     const isEnabled = await getAutoLauncher().isEnabled();
     if (!isEnabled) {
@@ -1284,7 +1307,8 @@ ipcMain.handle('enable-auto-launch', async () => {
 });
 
 // Disable auto-launch (remove from Windows startup)
-ipcMain.handle('disable-auto-launch', async () => {
+ipcMain.handle('disable-auto-launch', async (event) => {
+  assertTrustedIpcSender(event);
   try {
     const isEnabled = await getAutoLauncher().isEnabled();
     if (isEnabled) {
@@ -1299,7 +1323,8 @@ ipcMain.handle('disable-auto-launch', async () => {
 });
 
 // Toggle auto-launch
-ipcMain.handle('toggle-auto-launch', async (_, enable) => {
+ipcMain.handle('toggle-auto-launch', async (event, enable) => {
+  assertTrustedIpcSender(event);
   try {
     if (enable) {
       await getAutoLauncher().enable();
@@ -1317,7 +1342,8 @@ ipcMain.handle('toggle-auto-launch', async (_, enable) => {
 
 // ==================== FIREWALL RULE (EXPLICIT USER OPT-IN) ====================
 
-ipcMain.handle('get-firewall-rule-status', async () => {
+ipcMain.handle('get-firewall-rule-status', async (event) => {
+  assertTrustedIpcSender(event);
   if (os.platform() !== 'win32') return { exists: false, platform: os.platform() };
 
   const ruleName = 'GetVideosLocally-Server-Access';
@@ -1330,7 +1356,8 @@ ipcMain.handle('get-firewall-rule-status', async () => {
   });
 });
 
-ipcMain.handle('enable-firewall-rule', async () => {
+ipcMain.handle('enable-firewall-rule', async (event) => {
+  assertTrustedIpcSender(event);
   if (os.platform() !== 'win32') return { success: false, error: 'Only supported on Windows' };
 
   const ruleName = 'GetVideosLocally-Server-Access';
@@ -1365,7 +1392,8 @@ ipcMain.handle('enable-firewall-rule', async () => {
   });
 });
 
-ipcMain.handle('disable-firewall-rule', async () => {
+ipcMain.handle('disable-firewall-rule', async (event) => {
+  assertTrustedIpcSender(event);
   if (os.platform() !== 'win32') return { success: false, error: 'Only supported on Windows' };
 
   const ruleName = 'GetVideosLocally-Server-Access';
@@ -1400,7 +1428,8 @@ ipcMain.handle('disable-firewall-rule', async () => {
 
 // ==================== DOWNLOAD COUNT TRACKING ====================
 // Update active download count (called from renderer)
-ipcMain.handle('update-download-count', async (_, count) => {
+ipcMain.handle('update-download-count', async (event, count) => {
+  assertTrustedIpcSender(event);
   activeDownloadCount = count;
   console.log(`[Downloads] Active download count: ${activeDownloadCount}`);
 
@@ -1433,16 +1462,19 @@ ipcMain.handle('update-download-count', async (_, count) => {
 });
 
 // Get current download count
-ipcMain.handle('get-download-count', async () => {
+ipcMain.handle('get-download-count', async (event) => {
+  assertTrustedIpcSender(event);
   return activeDownloadCount;
 });
 
-ipcMain.handle('get-server-token', async () => {
+ipcMain.handle('get-server-token', async (event) => {
+  assertTrustedIpcSender(event);
   return serverToken;
 });
 
 // Handle Custom Close Confirmation Action
-ipcMain.on('close-action-response', (_, action) => {
+ipcMain.on('close-action-response', (event, action) => {
+  try { assertTrustedIpcSender(event); } catch (_) { return; }
   if (action === 'exit') {
     isQuitting = true;
     app.quit();

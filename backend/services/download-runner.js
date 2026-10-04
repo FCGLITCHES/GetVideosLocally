@@ -7,8 +7,11 @@ function sanitizeFilename(title) {
     return "downloaded_media";
   }
 
-  const sanitized = title.replace(/[<>:"/\\|?*~]/g, " ").replace(/\s+/g, " ");
-  return sanitized.trim().substring(0, 180);
+  const sanitized = String(title).replace(/[<>:"/\\|?*~%\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ").trim().substring(0, 180).replace(/[. ]+$/g, "");
+  if (!sanitized) return "downloaded_media";
+  return /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(sanitized)
+    ? `_${sanitized}` : sanitized;
 }
 
 async function getUniqueFolderPath(fs, basePath, baseName) {

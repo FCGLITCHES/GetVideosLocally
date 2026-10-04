@@ -8,7 +8,7 @@ const MAX_HISTORY_ITEMS_PER_CLIENT = 500;
 function createEmptyState() {
   return {
     version: HISTORY_INDEX_VERSION,
-    clients: {},
+    clients: Object.create(null),
   };
 }
 
@@ -38,7 +38,7 @@ class HistoryIndex {
       ) {
         this.state = {
           version: HISTORY_INDEX_VERSION,
-          clients: raw.clients,
+          clients: Object.assign(Object.create(null), raw.clients),
         };
       }
     } catch (error) {
@@ -175,7 +175,7 @@ class HistoryIndex {
       .map((item) => this.normalizeEntry({ ...item, clientId }))
       .filter(Boolean);
 
-    this.state.clients = {};
+    this.state.clients = Object.create(null);
     return this.setClientItems(clientId, normalizedItems);
   }
 

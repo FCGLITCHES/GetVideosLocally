@@ -14,7 +14,11 @@ const LEVELS = /** @type {const} */ ({
 
 const MAX_LOG_SIZE = 5 * 1024 * 1024;
 const MAX_LOG_FILES = 3;
-const LOG_FILE = path.join(__dirname, "..", "..", "data", "app.log");
+const sourceRoot = path.join(__dirname, "..", "..");
+const logRoot = process.env.USER_DATA_PATH || (sourceRoot.includes("app.asar")
+  ? path.join(process.env.APPDATA || require("os").homedir(), "GetVideosLocally")
+  : sourceRoot);
+const LOG_FILE = path.join(logRoot, "data", "app.log");
 
 let fileStream = null;
 

@@ -21,6 +21,7 @@ const ERROR_CODES = Object.freeze({
   network: "NETWORK",
   rateLimited: "RATE_LIMITED",
   stateCorrupt: "STATE_CORRUPT",
+  streamForbidden: "STREAM_FORBIDDEN",
   tooling: "TOOLING",
   unknown: "UNKNOWN",
 });
@@ -93,6 +94,24 @@ function classifyRuntimeError({
     };
   }
 
+  // A 403 on the media stream itself (after extraction succeeded) is YouTube's
+  // stream protection, not a sign-in problem, so it must not blame the cookies.
+  if (
+    includesAny(combined, [
+      "unable to download video data: http error 403",
+      "media stream was refused",
+    ])
+  ) {
+    return {
+      ...baseResult,
+      category: ERROR_CATEGORIES.download,
+      code: ERROR_CODES.streamForbidden,
+      retryable: true,
+      userMessage:
+        "YouTube refused the media stream (HTTP 403). This is YouTube's stream protection, not your cookies. Retry later or update yt-dlp in Settings.",
+    };
+  }
+
   if (
     includesAny(combined, [
       "sign in to confirm",
@@ -100,6 +119,8 @@ function classifyRuntimeError({
       "account username missing",
       "authentication failed despite cookies",
       "cookies appear to be expired",
+      "provided youtube account cookies are no longer valid",
+      "saved cookie session was rejected",
     ])
   ) {
     return {
@@ -110,7 +131,7 @@ function classifyRuntimeError({
       code: hasCookies ? ERROR_CODES.cookieExpired : ERROR_CODES.authRequired,
       retryable: false,
       userMessage: hasCookies
-        ? "The imported cookies appear to be expired. Import fresh cookies before retrying."
+        ? "The saved cookie session was rejected. It may have expired or changed in your browser. Export fresh cookies and retry."
         : "This media requires login. Import cookies before retrying.",
     };
   }

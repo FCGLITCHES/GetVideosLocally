@@ -8,15 +8,15 @@ const test = require("node:test");
 const projectRoot = path.join(__dirname, "..");
 const stylesheet = fs.readFileSync(path.join(projectRoot, "style.css"), "utf8");
 
-test("header counters and theme selector stay flat while the speed indicator remains visible", () => {
+test("header counters and theme selector stay flat and the speed limit lives only in settings", () => {
+  const markup = fs.readFileSync(path.join(projectRoot, "index.html"), "utf8");
   assert.match(
     stylesheet,
     /\.header \.stat-value\s*\{[^}]*background:\s*transparent;[^}]*border-radius:\s*0;/s,
   );
-  assert.match(
-    stylesheet,
-    /\.header #speedValue\s*\{[^}]*font-size:\s*1\.2rem;[^}]*font-weight:\s*800;/s,
-  );
+  assert.doesNotMatch(markup, /headerSpeedSlider/);
+  assert.match(markup, /id="maxSpeed"/);
+  assert.doesNotMatch(stylesheet, /\.speed-widget/);
   assert.match(
     stylesheet,
     /\.header \.quick-theme-select\s*\{[^}]*background-color:\s*transparent;[^}]*backdrop-filter:\s*none;/s,

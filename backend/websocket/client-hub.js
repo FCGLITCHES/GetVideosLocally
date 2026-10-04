@@ -35,16 +35,18 @@ function createWebSocketHub({
 
   function attach(wss) {
     wss.on("connection", (ws, req) => {
-      const parameters = urlParser.parse(req.url, true);
-      const clientId = parameters.query.clientId;
+      const parameters = new URL(req.url, "http://127.0.0.1");
+      const clientId = parameters.searchParams.get("clientId");
 
-      if (!clientId) {
+      if (typeof clientId !== "string" || !clientId || clientId.length > 128) {
         logger.log("Connection attempt without clientId. Closing.");
         ws.close();
         return;
       }
 
+      const previous = state.clients.get(clientId);
       state.clients.set(clientId, ws);
+      if (previous && previous !== ws) previous.close(1000, "Reconnected");
       logger.log(
         `Client connected: ${clientId}. Total clients: ${state.clients.size}`,
       );
@@ -56,6 +58,10 @@ function createWebSocketHub({
       ws.on("message", async (rawMessage) => {
         try {
           const messageData = JSON.parse(rawMessage.toString());
+          if (!messageData || typeof messageData !== "object" || Array.isArray(messageData)) {
+            throw new Error("Expected a message object");
+          }
+          if (state.clients.get(clientId) !== ws) return;
           await onMessage(clientId, messageData);
         } catch (error) {
           logger.error(`Failed to parse message from ${clientId}:`, error);
@@ -67,8 +73,10 @@ function createWebSocketHub({
       });
 
       ws.on("close", () => {
-        state.clients.delete(clientId);
-        state.clientAutoUpdateSettings.delete(clientId);
+        if (state.clients.get(clientId) === ws) {
+          state.clients.delete(clientId);
+          state.clientAutoUpdateSettings.delete(clientId);
+        }
         logger.log(
           `Client disconnected: ${clientId}. Total clients: ${state.clients.size}`,
         );

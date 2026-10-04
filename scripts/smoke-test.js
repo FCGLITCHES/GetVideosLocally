@@ -299,9 +299,9 @@ async function testFFmpegMuxing() {
 async function testYtDlpFFmpegIntegration() {
   const name = "yt-dlp --ffmpeg-location flag";
   return new Promise((resolve) => {
-    const proc = spawn(ytdlpExecutable, ["--version"], {
+    const proc = spawn(ytdlpExecutable, ["--ffmpeg-location", ffmpegExecutable, "--version"], {
       stdio: ["ignore", "pipe", "pipe"],
-      timeout: 10000,
+      timeout: 30000,
     });
 
     let stdout = "";

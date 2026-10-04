@@ -4,13 +4,15 @@
 class TelemetryService {
     constructor() {
         this.enabled = false;
-        this.endpoint = process.env.TELEMETRY_ENDPOINT || 'https://api.example.com/telemetry';
+        this.endpoint = typeof process !== 'undefined' ? process.env.TELEMETRY_ENDPOINT || '' : '';
         this.maxQueueSize = 100;
         this.errorQueue = [];
-        this.anonymousId = this.getOrCreateAnonymousId();
+        this.anonymousId = null;
+        this.handlersAttached = false;
     }
 
     getOrCreateAnonymousId() {
+        if (typeof localStorage === 'undefined') return null;
         // Generate or retrieve anonymous ID (stored locally, no PII)
         const key = 'simplyytd_anonymous_id';
         let id = localStorage.getItem(key);
@@ -23,14 +25,21 @@ class TelemetryService {
 
     isOptedIn() {
         // Check user preference
-        const userSettings = JSON.parse(localStorage.getItem('userSettings') || '{}');
-        return userSettings.errorTelemetry === true;
+        try {
+            if (typeof localStorage === 'undefined') return false;
+            const userSettings = JSON.parse(localStorage.getItem('userSettings') || '{}');
+            return userSettings.errorTelemetry === true;
+        } catch (_) { return false; }
     }
 
     enable() {
         this.enabled = this.isOptedIn();
         if (this.enabled) {
-            this.setupErrorHandlers();
+            try { this.anonymousId = this.getOrCreateAnonymousId(); } catch (_) { this.anonymousId = null; }
+            if (!this.handlersAttached) {
+                this.setupErrorHandlers();
+                this.handlersAttached = true;
+            }
             console.log('✅ Error telemetry enabled (opt-in)');
         }
     }
@@ -203,5 +212,5 @@ if (typeof window !== 'undefined') {
     });
 }
 
-module.exports = { TelemetryService, telemetry };
+if (typeof module !== 'undefined') module.exports = { TelemetryService, telemetry };
 
