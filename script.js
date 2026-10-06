@@ -305,6 +305,84 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Visual state, short label and icon for the status pill under Download Now.
+    const STATUS_PILL_STATES = {
+        success: { label: 'Ready', icon: 'fa-check' },
+        info: { label: 'Working', icon: 'fa-arrow-down' },
+        warning: { label: 'Heads up', icon: 'fa-triangle-exclamation' },
+        error: { label: 'Issue', icon: 'fa-exclamation' },
+        cancelled: { label: 'Cancelled', icon: 'fa-xmark', state: 'error' },
+        connecting: { label: 'Reconnecting', icon: 'fa-tower-broadcast' },
+        offline: { label: 'Offline', icon: 'fa-plug-circle-xmark', state: 'error' }
+    };
+
+    // Messages sit on top of the connection state briefly, then the pill falls back to it.
+    const STATUS_PILL_SHORT_MS = 4000;
+    const STATUS_PILL_MAX_MS = 7000;
+    let serverConnection = 'starting'; // 'starting' | 'ready' | 'reconnecting'
+    let statusPillTimer = null;
+
+    function getConnectionStatus() {
+        if (serverConnection === 'starting') {
+            return { message: 'Connecting to server', type: 'connecting', label: 'Starting up', wave: 'connecting' };
+        }
+        if (serverConnection === 'reconnecting') {
+            return { message: 'Server disconnected', type: 'connecting', label: 'Reconnecting', wave: 'connecting' };
+        }
+        if (navigator.onLine === false) {
+            return { message: "You're offline. Reconnect to download", type: 'offline', label: 'Offline', wave: 'offline' };
+        }
+        return { message: 'Connected to server', type: 'success', label: 'Ready', wave: 'ready', idle: true };
+    }
+
+    function renderStatusPill(message, type, label, idle = false) {
+        const statusDiv = youtubeStatusDiv;
+        if (!statusDiv) return;
+        const stateKey = STATUS_PILL_STATES[type] ? type : 'info';
+        const config = STATUS_PILL_STATES[stateKey];
+        const title = String(message || '').trim().replace(/([^.])\.$/, '$1');
+        statusDiv.className = `status-pill is-${config.state || stateKey}${idle ? ' is-idle' : ''}`;
+        statusDiv.dataset.connection = getConnectionStatus().wave;
+        statusDiv.title = title;
+        const icon = statusDiv.querySelector('.status-pill-icon i');
+        const titleEl = statusDiv.querySelector('.status-pill-title');
+        const labelEl = statusDiv.querySelector('.status-pill-label');
+        if (icon) icon.className = `fas ${config.icon}`;
+        if (titleEl) titleEl.textContent = title;
+        if (labelEl) labelEl.textContent = label || config.label;
+        // Restart the entrance animation for every new message.
+        void statusDiv.offsetWidth;
+        statusDiv.classList.add('is-entering');
+    }
+
+    function showConnectionStatus(options = {}) {
+        window.clearTimeout(statusPillTimer);
+        statusPillTimer = null;
+        const status = getConnectionStatus();
+        renderStatusPill(status.message, status.type, status.label, status.idle);
+        if (options.announce) announceLiveMessage(status.message);
+    }
+
+    function setServerConnection(next) {
+        if (serverConnection === next) return;
+        serverConnection = next;
+        // A running message finishes its time unless the connection just got worse.
+        if (statusPillTimer && next === 'ready') {
+            if (youtubeStatusDiv) youtubeStatusDiv.dataset.connection = getConnectionStatus().wave;
+            return;
+        }
+        showConnectionStatus({ announce: true });
+    }
+
+    function showStatus(message, downloaderSource, type = 'info', label) {
+        void downloaderSource;
+        renderStatusPill(message, type, label);
+        window.clearTimeout(statusPillTimer);
+        const duration = type === 'success' || type === 'info' ? STATUS_PILL_SHORT_MS : STATUS_PILL_MAX_MS;
+        statusPillTimer = window.setTimeout(() => showConnectionStatus(), duration);
+        announceLiveMessage(message);
+    }
+
     function updateNetworkUI(options = {}) {
         const isOffline = navigator.onLine === false;
         const shouldAnnounce = options.announce === true;
@@ -322,15 +400,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (isOffline) {
-            const offlineMessage = 'You appear to be offline. Reconnect to fetch video info or start downloads.';
-            if (shouldAnnounce) {
-                showStatus(offlineMessage, 'youtube', 'error');
-            }
+            showConnectionStatus({ announce: shouldAnnounce });
             return;
         }
 
         if (shouldAnnounce) {
-            showStatus('Connection restored. Downloads are available again.', 'youtube', 'success');
+            showStatus('Connection restored. Downloads are available again.', 'youtube', 'success', 'Back online');
         }
     }
 
@@ -988,7 +1063,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ws.onopen = () => {
             void flushDismissedDownloads();
             console.log('WebSocket connection established.');
-            if (youtubeStatusDiv) showStatus('Connected to server.', 'youtube', 'success');
+            setServerConnection('ready');
 
             const connectionIndicators = document.querySelectorAll('.connection-status');
             connectionIndicators.forEach(indicator => {
@@ -1009,10 +1084,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Handle ready message specifically
                 if (data.type === 'ready') {
                     console.log('Server ready message received');
-                    const currentStatusDiv = youtubeStatusDiv;
-                    if (currentStatusDiv) {
-                        showStatus('Server ready - you can start downloading!', 'youtube', 'success');
-                    }
+                    setServerConnection('ready');
                     return;
                 }
 
@@ -1028,13 +1100,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         ws.onclose = () => {
             console.log('WebSocket connection closed. Attempting to reconnect...');
-            if (youtubeStatusDiv) showStatus('Disconnected. Attempting to reconnect...', 'youtube', 'error');
+            setServerConnection('reconnecting');
             setTimeout(connectWebSocket, 3000);
         };
 
         ws.onerror = (error) => {
+            // onclose always follows and moves the status pill to "Reconnecting".
             console.error('WebSocket error:', error);
-            if (youtubeStatusDiv) showStatus('WebSocket connection error.', 'youtube', 'error');
         };
     }
 
@@ -1047,7 +1119,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('WebSocket is not connected.');
             const currentStatusDiv = youtubeStatusDiv;
             if (currentStatusDiv) {
-                showStatus('Not connected to server. Please wait.', 'youtube', 'error');
+                showStatus('Not connected to server yet.', 'youtube', 'error', 'Not connected');
             }
         }
     }
@@ -1262,20 +1334,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- UI Updates ---
-    function showStatus(message, downloaderSource, type = 'info') {
-        void downloaderSource;
-        const statusDiv = youtubeStatusDiv;
-        if (statusDiv) {
-            statusDiv.textContent = message;
-            statusDiv.className = 'status-message';
-            if (type === 'success') statusDiv.classList.add('success');
-            else if (type === 'error') statusDiv.classList.add('error');
-            else if (type === 'warning') statusDiv.classList.add('warning');
-            else if (type === 'cancelled') statusDiv.classList.add('error');
-        }
-        announceLiveMessage(message);
-    }
-
     function getLinksArea(source) {
         void source;
         return youtubeDownloadLinksArea;
@@ -1801,7 +1859,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const state = downloadItemsState.get(itemId);
         if (!state || state.retrying) return false;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-            showStatus('Waiting for the download server to reconnect. Please retry once connected.', state.source, 'error');
+            showStatus('Waiting for the download server to reconnect. Please retry once connected.', state.source, 'connecting');
             return false;
         }
         state.retrying = true;
@@ -1901,7 +1959,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (navigator.onLine === false) {
             if (showErrors) {
-                showStatus('You are offline. Reconnect before fetching video info.', source, 'error');
+                showStatus("You're offline. Reconnect to load video info.", source, 'offline');
             }
             return null;
         }
@@ -2231,7 +2289,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         if (navigator.onLine === false) {
-            if (statusDiv) showStatus('You are offline. Reconnect before starting downloads.', source, 'error');
+            if (statusDiv) showStatus("You're offline. Reconnect to download.", source, 'offline');
             return;
         }
 
@@ -2512,9 +2570,6 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('activeDownloader', tab);
         if (tab === 'youtube') {
             detectPlaylist();
-            if (ws && ws.readyState === WebSocket.OPEN && youtubeStatusDiv) {
-                showStatus('Connected to server.', 'youtube', 'success');
-            }
         }
     }
     if (youtubeTab) youtubeTab.onclick = (e) => { e.preventDefault(); showTab('youtube'); };

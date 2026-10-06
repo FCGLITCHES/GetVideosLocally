@@ -201,7 +201,16 @@
                         </label>
                     </div>
 
-                    <div id="status" class="status-message" role="status" aria-live="polite"></div>
+                    <div id="status" class="status-pill is-connecting" role="status" aria-live="polite">
+                        <span class="status-pill-icon" aria-hidden="true"><i class="fas fa-tower-broadcast"></i></span>
+                        <span class="status-pill-wave" aria-hidden="true">
+                            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                        </span>
+                        <span class="status-pill-text">
+                            <span class="status-pill-title">Connecting to server</span>
+                            <span class="status-pill-label">Starting up</span>
+                        </span>
+                    </div>
 
                     <section id="failureHelpPanel" class="failure-help-panel is-hidden-initial" aria-live="polite"
                         aria-labelledby="failureHelpTitle">
