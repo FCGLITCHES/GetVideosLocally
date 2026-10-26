@@ -1,5 +1,7 @@
 cookies/
 node_modules/
+# Tool binaries are fetched and verified from tools-manifest.json before builds
+/bin/
 downloads/
 dist/
 .cache/

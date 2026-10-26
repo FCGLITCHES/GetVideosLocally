@@ -5,6 +5,7 @@ function createWebSocketHub({
   urlParser,
   state,
   onMessage,
+  onConnect = null,
   logger = require("../utils/logger").logger,
 }) {
   function sendMessageToClient(clientId, messageObject) {
@@ -54,6 +55,7 @@ function createWebSocketHub({
         type: "status",
         message: "Successfully connected to the download server.",
       });
+      onConnect?.(clientId);
 
       ws.on("message", async (rawMessage) => {
         try {

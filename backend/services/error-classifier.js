@@ -23,6 +23,7 @@ const ERROR_CODES = Object.freeze({
   stateCorrupt: "STATE_CORRUPT",
   streamForbidden: "STREAM_FORBIDDEN",
   tooling: "TOOLING",
+  toolReplaced: "TOOL_REPLACED",
   unknown: "UNKNOWN",
 });
 
@@ -177,6 +178,26 @@ function classifyRuntimeError({
       retryable: true,
       userMessage:
         "A network error interrupted the request. Check connectivity and retry.",
+    };
+  }
+
+  // yt-dlp.exe was replaced while this process was reading its bundled
+  // modules (an in-place self-update). The new binary is fine, so a fresh
+  // attempt succeeds.
+  if (
+    includesAny(combined, [
+      "while decompressing data: incorrect header check",
+      "error -3 while decompressing",
+      "zlib.error",
+    ])
+  ) {
+    return {
+      ...baseResult,
+      category: ERROR_CATEGORIES.tooling,
+      code: ERROR_CODES.toolReplaced,
+      retryable: true,
+      userMessage:
+        "yt-dlp was updated while this download was running. Retrying with the updated version.",
     };
   }
 

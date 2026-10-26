@@ -53,3 +53,13 @@ test("youtube stream 403 retries once through the HLS fallback", () => {
   assert.match(server, /youtube:player_client=default,web_safari/);
   assert.match(server, /b\[protocol\*=m3u8\]/);
 });
+
+test("a yt-dlp binary swapped mid-run is a retryable tooling error", () => {
+  const result = classifyRuntimeError({
+    message: "ERROR: Error -3 while decompressing data: incorrect header check",
+    siteKey: "youtube",
+  });
+  assert.equal(result.code, ERROR_CODES.toolReplaced);
+  assert.equal(result.category, "tooling");
+  assert.equal(result.retryable, true);
+});

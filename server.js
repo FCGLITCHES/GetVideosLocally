@@ -6,7 +6,7 @@ require("dotenv").config();
 process.env.PYTHONIOENCODING = "utf-8";
 if (process.platform === "win32") process.env.LANG = "en_US.UTF-8";
 
-const { logger } = require("./backend/utils/logger");
+const { logger, LOG_FILE } = require("./backend/utils/logger");
 const express = require("express");
 const { spawn, exec } = require("child_process");
 const path = require("path");
@@ -22,6 +22,12 @@ const globAsync = promisify(require("glob"));
 const { loadEnv } = require("./backend/config/env");
 const { isLocalOrigin, createLocalRequestGuard } = require("./backend/middleware/local-origin");
 const { assertMediaUrl } = require("./backend/utils/media-url");
+const { createToolUpdateGate } = require("./backend/utils/tool-update-gate");
+const {
+  collectDiagnostics,
+  inspectCookies,
+  summarizeCookieHealth,
+} = require("./backend/services/diagnostics-report");
 const { getCookiesFilePath, isValidCookiesText } = require("./backend/utils/cookie-storage");
 const {
   detectSiteKeyFromUrl,
@@ -48,15 +54,21 @@ const {
 } = require("./backend/services/error-classifier");
 const {
   createUsageTelemetry,
+  detectChannel: detectInstallChannel,
   fileSize: usageTelemetryFileSize,
 } = require("./backend/services/usage-telemetry");
 const {
   createSiteRequestGuard,
 } = require("./backend/services/site-request-guard");
+const { sendProblemReport } = require("./backend/services/problem-report");
 const {
   installFfmpegFromZip,
   loadFfmpegChecksumManifest,
 } = require("./backend/services/ffmpeg-update-security");
+const {
+  prepareYtDlpUpdate,
+  swapInStagedBinary,
+} = require("./backend/services/ytdlp-updater");
 const {
   buildSubtitleArgs,
   computeSiteRetryDelayMs,
@@ -141,16 +153,18 @@ const env = loadEnv(process.env);
     logger,
   );
 
+  function readAppVersion() {
+    try {
+      return require("./package.json").version;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Opt-in anonymous usage statistics (off by default; see usage-telemetry.js).
   const usageTelemetry = createUsageTelemetry({
     userDataPath: writableDataRoot,
-    appVersion: (() => {
-      try {
-        return require("./package.json").version;
-      } catch (_) {
-        return null;
-      }
-    })(),
+    appVersion: readAppVersion(),
     logger,
   });
   usageTelemetry.init().catch((error) =>
@@ -258,10 +272,65 @@ const env = loadEnv(process.env);
   );
 
   // ==================== AUTO-UPDATE SYSTEM ====================
-  async function checkAndUpdateTools(
+  // Tool binaries must never be replaced while a yt-dlp/ffmpeg process is
+  // using them. New releases are downloaded and verified while downloads keep
+  // running; only the final file swap waits on the gate. Once a swap is
+  // queued, running processes finish and new ones wait until it is done.
+  const toolUpdateGate = createToolUpdateGate();
+  let toolUpdateRun = null;
+
+  function checkAndUpdateTools(
     forceCheck = false,
     notifyClients = false,
+    { returnWhenDeferred = false } = {},
   ) {
+    if (!toolUpdateRun) {
+      toolUpdateRun = runToolUpdates(forceCheck, notifyClients).finally(() => {
+        toolUpdateRun = null;
+      });
+    }
+    const run = toolUpdateRun;
+    if (!returnWhenDeferred) return run;
+
+    // Manual updates answer right away when the swap has to wait for
+    // downloads; the outcome then arrives as tool_update_complete.
+    return new Promise((resolve, reject) => {
+      const check = (state) => {
+        if (state.phase === "waiting" && state.activeCount > 0) {
+          stop();
+          resolve({
+            deferred: true,
+            tool: state.tool,
+            waitingFor: state.activeCount,
+          });
+        }
+      };
+      const stop = toolUpdateGate.onChange(check);
+      check(toolUpdateGate.getState());
+      run.then(
+        (result) => {
+          stop();
+          resolve(result);
+        },
+        (error) => {
+          stop();
+          reject(error);
+        },
+      );
+    });
+  }
+
+  function installWhenIdle(label, install) {
+    const running = toolUpdateGate.activeCount;
+    if (running > 0) {
+      logger.info(
+        `⏸️ ${label} update is ready; installing after ${running} running yt-dlp/ffmpeg process(es) finish. New downloads wait until then.`,
+      );
+    }
+    return toolUpdateGate.runWhenIdle(install, { label });
+  }
+
+  async function runToolUpdates(forceCheck, notifyClients) {
     logger.info("🔄 Starting tool updates...");
     try {
       const ytdlpResult = await updateYtDlp(forceCheck);
@@ -276,11 +345,13 @@ const env = loadEnv(process.env);
             updated: ytdlpResult.updated || false,
             oldVersion: ytdlpResult.oldVersion,
             newVersion: ytdlpResult.newVersion,
+            error: ytdlpResult.error,
           },
           ffmpeg: {
             updated: ffmpegResult.updated || false,
             oldVersion: ffmpegResult.oldVersion,
             newVersion: ffmpegResult.newVersion,
+            error: ffmpegResult.error,
           },
         };
 
@@ -291,53 +362,6 @@ const env = loadEnv(process.env);
     } catch (error) {
       logger.error("❌ Error during tool updates:", error);
       return { error: error.message };
-    }
-  }
-
-  async function checkYtDlpUpdateAvailable() {
-    try {
-      const currentVersion = await getToolVersion(ytdlpExecutable);
-      const checkResult = await runToolUpdate(ytdlpExecutable, [
-        "-U",
-        "--verbose",
-      ]);
-
-      const output = (checkResult.output || "").toLowerCase();
-      const errorOutput = (checkResult.error || "").toLowerCase();
-      const combinedOutput = output + " " + errorOutput;
-
-      if (checkResult.success) {
-        const newVersion = await getToolVersion(ytdlpExecutable);
-
-        if (newVersion !== currentVersion) {
-          return { hasUpdate: true, updated: true, currentVersion, newVersion };
-        }
-
-        if (
-          combinedOutput.includes("already up to date") ||
-          combinedOutput.includes("no update") ||
-          combinedOutput.includes("is up to date")
-        ) {
-          return {
-            hasUpdate: false,
-            currentVersion,
-            reason: "Already up to date",
-          };
-        }
-
-        return {
-          hasUpdate: false,
-          currentVersion,
-          reason: "No update available",
-        };
-      }
-
-      return {
-        hasUpdate: false,
-        error: checkResult.error || "Failed to check for updates",
-      };
-    } catch (error) {
-      return { hasUpdate: false, error: error.message };
     }
   }
 
@@ -364,43 +388,59 @@ const env = loadEnv(process.env);
         }
       }
 
-      logger.info("🔍 Checking for updates and updating if available...");
-      const checkResult = await checkYtDlpUpdateAvailable();
-
-      if (checkResult.error) {
-        logger.info(`❌ yt-dlp update check failed: ${checkResult.error}`);
-        setLastUpdateCheck("ytdlp");
+      if (!path.isAbsolute(ytdlpExecutable) || !fs.existsSync(ytdlpExecutable)) {
         return {
           updated: false,
           currentVersion,
-          error: checkResult.error || "Failed to check for updates",
+          reason: "yt-dlp is not bundled with the app; update it with your package manager",
         };
       }
 
-      if (checkResult.updated && checkResult.newVersion) {
-        logger.info(
-          `✅ yt-dlp updated successfully! ${currentVersion} → ${checkResult.newVersion}`,
-        );
-        setLastUpdateCheck("ytdlp");
-        global.ytdlpExecutable = ytdlpExecutable;
-        return {
-          updated: true,
-          oldVersion: currentVersion,
-          newVersion: checkResult.newVersion,
-        };
-      }
-
-      logger.info(`ℹ️ yt-dlp: ${checkResult.reason || "No update available"}`);
+      const prepared = await prepareYtDlpUpdate({
+        executable: ytdlpExecutable,
+        currentVersion,
+        logger,
+      });
       setLastUpdateCheck("ytdlp");
+
+      if (prepared.upToDate) {
+        logger.info(`ℹ️ yt-dlp is up to date (${prepared.version})`);
+        return {
+          updated: false,
+          currentVersion,
+          reason: "Already up to date",
+        };
+      }
+
+      logger.info(
+        `✅ yt-dlp ${prepared.version} downloaded and verified (sha256 ${prepared.sha256})`,
+      );
+      const newVersion = await installWhenIdle("yt-dlp", () =>
+        swapInStagedBinary({
+          executable: ytdlpExecutable,
+          stagedPath: prepared.stagedPath,
+          expectedVersion: prepared.version,
+        }),
+      );
+      logger.info(
+        `✅ yt-dlp updated successfully! ${currentVersion} → ${newVersion}`,
+      );
+      global.ytdlpExecutable = ytdlpExecutable;
       return {
-        updated: false,
-        currentVersion: checkResult.currentVersion || currentVersion,
-        reason: checkResult.reason || "No update available",
+        updated: true,
+        oldVersion: currentVersion,
+        newVersion: `yt-dlp ${newVersion}`,
       };
     } catch (error) {
       logger.error("❌ Error updating yt-dlp:", error.message);
       return { updated: false, error: error.message };
     }
+  }
+
+  // "ffmpeg version 8.1.1-essentials_build-www.gyan.dev Copyright ..." -> "8.1.1"
+  function shortFfmpegVersion(versionLine) {
+    const match = String(versionLine || "").match(/ffmpeg version\s+n?(\d+(?:\.\d+)*)/i);
+    return match ? match[1] : versionLine;
   }
 
   async function updateFFmpeg(forceCheck = false) {
@@ -472,8 +512,8 @@ const env = loadEnv(process.env);
           setLastUpdateCheck("ffmpeg");
           return {
             updated: true,
-            oldVersion: currentVersion,
-            newVersion: newVersion,
+            oldVersion: shortFfmpegVersion(currentVersion),
+            newVersion: shortFfmpegVersion(newVersion),
           };
         } else {
           logger.error(
@@ -571,38 +611,6 @@ const env = loadEnv(process.env);
     }
   }
 
-  async function runToolUpdate(executable, args) {
-    return new Promise((resolve) => {
-      const updateProc = spawn(executable, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: 120000,
-      });
-
-      let updateOutput = "";
-      let updateError = "";
-
-      updateProc.stdout.on("data", (data) => {
-        updateOutput += data;
-      });
-
-      updateProc.stderr.on("data", (data) => {
-        updateError += data;
-      });
-
-      updateProc.on("close", (code) => {
-        resolve(
-          code === 0
-            ? { success: true, output: updateOutput }
-            : { success: false, error: updateError, code },
-        );
-      });
-
-      updateProc.on("error", (error) => {
-        resolve({ success: false, error: error.message });
-      });
-    });
-  }
-
   async function checkFFmpegUpdates() {
     try {
       const currentVersion = await getToolVersion(ffmpegExecutable);
@@ -668,9 +676,10 @@ const env = loadEnv(process.env);
         };
       }
 
-      const currentVersionClean = currentVersion
-        .replace(/^(ffmpeg version\s*)/i, "")
-        .trim();
+      // "ffmpeg version 8.1.1-essentials_build-www.gyan.dev ..." -> "8.1.1"
+      const currentVersionClean =
+        (currentVersion.match(/ffmpeg version\s+n?(\d+(?:\.\d+)*)/i) || [])[1] ||
+        "unknown";
       const hasUpdate = compareVersions(currentVersionClean, latestVersion) < 0;
 
       return {
@@ -697,6 +706,7 @@ const env = loadEnv(process.env);
       binDir: path.dirname(ffmpegExecutable),
       testFFmpegWorking,
       logger,
+      runExclusive: (swap) => installWhenIdle("FFmpeg", swap),
     });
   }
 
@@ -823,6 +833,12 @@ const env = loadEnv(process.env);
     urlParser: url,
     state: downloadState,
     logger: logger,
+    onConnect: (clientId) => {
+      const state = toolUpdateGate.getState();
+      if (state.phase !== "idle") {
+        wsHub.sendMessageToClient(clientId, toolUpdateStateMessage(state));
+      }
+    },
     onMessage: async (clientId, messageData) => {
       const { type, itemId } = messageData;
 
@@ -856,6 +872,18 @@ const env = loadEnv(process.env);
   });
 
   sendMessageToClient = wsHub.sendMessageToClient;
+
+  // Tell every window when a tool update is waiting for downloads or
+  // installing, so queued downloads can say why they have not started.
+  function toolUpdateStateMessage(state = toolUpdateGate.getState()) {
+    return { type: "tool_update_state", ...state };
+  }
+  let lastToolUpdateBroadcast = "idle";
+  toolUpdateGate.onChange((state) => {
+    if (state.phase === "idle" && lastToolUpdateBroadcast === "idle") return;
+    lastToolUpdateBroadcast = state.phase;
+    wsHub.broadcast(toolUpdateStateMessage(state));
+  });
 
   function applyQueueProfile(profileName) {
     const normalizedProfile = String(profileName || "balanced").toLowerCase();
@@ -1208,6 +1236,8 @@ const env = loadEnv(process.env);
       return null;
     }
 
+    // FFmpeg updates replace ffprobe.exe too, so probes share the update gate.
+    const releaseToolSlot = await toolUpdateGate.acquire();
     return new Promise((resolve) => {
       const ffprobeProc = spawn(
         ffprobeExecutable,
@@ -1225,6 +1255,7 @@ const env = loadEnv(process.env);
           windowsHide: true,
         },
       );
+      toolUpdateGate.releaseOnExit(ffprobeProc, releaseToolSlot);
 
       let stdout = "";
       let stderr = "";
@@ -1369,6 +1400,7 @@ const env = loadEnv(process.env);
   app.use("/video-info", standardLimiter);
   app.use("/api", standardLimiter);
   app.use("/diagnostics", looseLimiter);
+  app.use("/cookies-status", looseLimiter);
   app.use("/tools-status", looseLimiter);
   app.use("/history-index", looseLimiter);
   app.use("/playlist-preview", standardLimiter);
@@ -4107,9 +4139,16 @@ const env = loadEnv(process.env);
       );
     }
 
+    const releaseToolSlot = await acquireToolSlotFor(
+      clientId,
+      itemId,
+      itemProcInfoRef?.source || activeProcesses.get(itemId)?.source,
+    );
+
     return new Promise((resolve, reject) => {
       const currentProcInfo = itemProcInfoRef || activeProcesses.get(itemId);
       if (currentProcInfo?.cancelled) {
+        releaseToolSlot();
         return reject(
           new Error(
             `[${itemId}] Download cancelled before yt-dlp process start.`,
@@ -4162,6 +4201,7 @@ const env = loadEnv(process.env);
         windowsHide: true,
         env: { ...process.env, PYTHONIOENCODING: "utf-8", LANG: "en_US.UTF-8" },
       });
+      toolUpdateGate.releaseOnExit(ytdlpProc, releaseToolSlot);
 
       if (currentProcInfo) currentProcInfo.ytdlpProc = ytdlpProc;
       else if (itemProcInfoRef && typeof itemProcInfoRef === "object")
@@ -4679,15 +4719,48 @@ const env = loadEnv(process.env);
     });
   }
 
+  // Reserve a tool slot for a download, telling its window when the slot is
+  // held back by a pending tool update.
+  async function acquireToolSlotFor(clientId, itemId, source) {
+    const state = toolUpdateGate.getState();
+    const held = state.phase !== "idle" && clientId && itemId;
+    if (held) {
+      sendMessageToClient(clientId, {
+        type: "tool_update_wait",
+        itemId,
+        source,
+        tool: state.tool,
+        waiting: true,
+      });
+    }
+    const release = await toolUpdateGate.acquire();
+    if (held) {
+      sendMessageToClient(clientId, {
+        type: "tool_update_wait",
+        itemId,
+        source,
+        waiting: false,
+      });
+    }
+    return release;
+  }
+
   async function runFFmpegCommand(
     clientId,
     ffmpegArgs,
     itemId,
     itemProcInfoRef,
   ) {
+    const releaseToolSlot = await acquireToolSlotFor(
+      clientId,
+      itemId,
+      itemProcInfoRef?.source,
+    );
+
     return new Promise((resolve, reject) => {
       const currentProcInfo = itemProcInfoRef || activeProcesses.get(itemId);
       if (currentProcInfo?.cancelled) {
+        releaseToolSlot();
         return reject(
           new Error(
             `[${itemId}] Conversion cancelled before ffmpeg process start.`,
@@ -4704,6 +4777,7 @@ const env = loadEnv(process.env);
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });
+      toolUpdateGate.releaseOnExit(ffmpegProc, releaseToolSlot);
 
       if (currentProcInfo) currentProcInfo.ffmpegProc = ffmpegProc;
       else if (itemProcInfoRef && typeof itemProcInfoRef === "object")
@@ -4755,6 +4829,36 @@ const env = loadEnv(process.env);
     });
   }
 
+  // ==================== DIAGNOSTICS ====================
+  const diagnosticsContext = {
+    appInfo: { version: readAppVersion() },
+    paths: {
+      logFile: LOG_FILE,
+      dataRoot: writableDataRoot,
+      downloadDir: DOWNLOAD_DIR,
+      cookiesPath: getCookiesFilePath(env.USER_DATA_PATH || fallbackUserDataRoot),
+    },
+    executables: {
+      ytdlp: ytdlpExecutable,
+      ffmpeg: ffmpegExecutable,
+      ffprobe: ffprobeExecutable,
+      node: nodeExecutable,
+    },
+    getToolVersion,
+    getLastUpdateCheck,
+    state: {
+      clients,
+      activeProcesses,
+      downloadQueue,
+      pausedDownloads,
+      scheduledDownloads,
+      failedDownloads,
+    },
+    toolUpdateGate,
+    isAutoUpdateEnabled: () =>
+      clientAutoUpdateSettings.size ? wsHub.hasAnyClientAutoUpdateEnabled() : null,
+  };
+
   // ==================== HTTP ROUTES ====================
   registerApiRoutes(app, {
     gracefulShutdown,
@@ -4775,6 +4879,17 @@ const env = loadEnv(process.env);
     retryAllFailedDownloads,
     dismissDownloadItem,
     previewPlaylist,
+    collectDiagnostics: (options) => collectDiagnostics(diagnosticsContext, options),
+    getCookieHealth: async () =>
+      summarizeCookieHealth(
+        await inspectCookies(diagnosticsContext.paths.cookiesPath, Date.now()),
+      ),
+    sendProblemReport: (report) =>
+      sendProblemReport({
+        ...report,
+        appVersion: readAppVersion(),
+        channel: process.env.GVL_APP_PACKAGED === "1" ? detectInstallChannel() : "dev",
+      }),
     usageTelemetry,
     logger: logger,
   });

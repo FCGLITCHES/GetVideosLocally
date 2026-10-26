@@ -8209,6 +8209,34 @@ button.history-action-btn[class]:active:not(:disabled),
     text-decoration: underline;
 }
 
+/* Login cookie state: a leading dot carries the tone so the copy stays readable. */
+#settingsModal .setting-desc[data-tone="ok"],
+#settingsModal .setting-desc[data-tone="warn"],
+#settingsModal .setting-desc[data-tone="bad"] {
+    --cookie-tone: var(--success-color);
+    color: var(--text-color);
+}
+
+#settingsModal .setting-desc[data-tone="warn"] {
+    --cookie-tone: #d97706;
+}
+
+#settingsModal .setting-desc[data-tone="bad"] {
+    --cookie-tone: var(--error-color);
+    font-weight: 500;
+}
+
+#settingsModal .setting-desc[data-tone]:not([data-tone="none"])::before {
+    content: "";
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-right: 0.4rem;
+    border-radius: 50%;
+    background: var(--cookie-tone);
+    vertical-align: 0.05em;
+}
+
 #settingsModal .setting-item .select-field,
 #settingsModal .setting-item .input-field {
     margin: 0;
@@ -9071,5 +9099,198 @@ button.history-action-btn[class]:active:not(:disabled),
         flex-wrap: wrap;
         flex-shrink: 1;
         row-gap: 0.5rem;
+    }
+}
+
+/* Report a problem dialog. Sits above the settings modal it opens from. */
+.modal.report-problem-layer {
+    z-index: 1100;
+}
+
+.report-problem-modal {
+    width: min(92vw, 560px);
+    padding: 2rem 2.25rem 1.75rem;
+    border-radius: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    text-align: left;
+}
+
+.report-problem-modal .report-problem-eyebrow {
+    margin: 0;
+    color: var(--primary-color);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.report-problem-modal h2 {
+    margin: -0.5rem 0 0.25rem;
+    text-align: left;
+    font-size: 1.65rem;
+    letter-spacing: -0.02em;
+}
+
+.report-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.report-field-label {
+    font-weight: 650;
+    font-size: 0.92rem;
+}
+
+.report-field-hint {
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.report-field textarea,
+.report-field input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.8rem 0.95rem;
+    border: 1.5px solid transparent;
+    border-radius: 12px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    font: inherit;
+    resize: vertical;
+}
+
+.report-field textarea {
+    min-height: 7.5rem;
+}
+
+.report-field textarea:focus-visible,
+.report-field input:focus-visible {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+/* The consent toggle reads as the attachment itself: a neutral slot when off,
+   a ruby file chip when the report will be included. */
+.report-attach {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.95rem 1rem;
+    border-radius: 14px;
+    background: var(--input-bg);
+    cursor: pointer;
+}
+
+.report-attach input {
+    grid-column: 3;
+    grid-row: 1;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0;
+    accent-color: var(--primary-color);
+    cursor: pointer;
+}
+
+.report-attach-icon {
+    grid-column: 1;
+    grid-row: 1;
+    display: grid;
+    place-items: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--text-color) 8%, transparent);
+    color: var(--text-muted);
+    font-size: 1.15rem;
+}
+
+.report-attach-copy {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.report-attach-title {
+    font-weight: 650;
+}
+
+.report-attach-desc {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.report-attach:has(input:checked) {
+    background: color-mix(in srgb, var(--primary-color) 12%, var(--input-bg));
+}
+
+.report-attach:has(input:checked) .report-attach-icon {
+    background: var(--primary-color);
+    color: #fff;
+}
+
+.report-attach:has(input:focus-visible) {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+.report-preview-link {
+    align-self: flex-start;
+    margin-top: -0.4rem;
+    padding: 0.2rem 0;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.report-preview-link:hover,
+.report-preview-link:focus-visible {
+    color: var(--primary-color);
+}
+
+.report-problem-status {
+    margin: 0;
+    min-height: 1.25rem;
+    font-size: 0.88rem;
+}
+
+.report-problem-status[data-tone="ok"] {
+    color: var(--success-color);
+}
+
+.report-problem-status[data-tone="bad"] {
+    color: var(--error-color);
+}
+
+.report-problem-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+/* Sent state: the form gives way to a confirmation. */
+.report-problem-modal.is-sent .report-field,
+.report-problem-modal.is-sent .report-attach,
+.report-problem-modal.is-sent .report-preview-link,
+.report-problem-modal.is-sent #sendReportProblemBtn {
+    display: none;
+}
+
+@media (max-width: 520px) {
+    .report-problem-modal {
+        padding: 1.6rem 1.25rem 1.25rem;
+    }
+
+    .report-problem-actions .action-btn {
+        flex: 1;
     }
 }

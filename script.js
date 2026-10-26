@@ -158,6 +158,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     })();
 
+    // Local-only record of UI errors for the diagnostics bundle. Never sent
+    // anywhere unless the user generates and shares a bundle.
+    const diagnosticsErrorLog = [];
+    function recordDiagnosticsError(type, message, source) {
+        diagnosticsErrorLog.push({
+            time: new Date().toISOString(),
+            type,
+            message: String(message || '').substring(0, 500),
+            source,
+        });
+        if (diagnosticsErrorLog.length > 50) diagnosticsErrorLog.shift();
+    }
+    window.addEventListener('error', (event) => {
+        const file = event.filename ? event.filename.split(/[\\/]/).pop() : '';
+        recordDiagnosticsError('error', event.error?.stack || event.message,
+            file ? `${file}:${event.lineno}:${event.colno}` : undefined);
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+        recordDiagnosticsError('unhandledrejection', event.reason?.stack || event.reason?.message || String(event.reason));
+    });
+
     // Make userSettings globally accessible
     window.userSettings = userSettings;
     window.managePowerSaveBlocker = managePowerSaveBlocker;
@@ -178,6 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const youtubeStatusDiv = document.getElementById('status');
     const failureHelpPanel = document.getElementById('failureHelpPanel');
     const failureHelpTitle = document.getElementById('failureHelpTitle');
+    const failureHelpEyebrow = document.getElementById('failureHelpEyebrow');
     const failureHelpDescription = document.getElementById('failureHelpDescription');
     const failureHelpSteps = document.getElementById('failureHelpSteps');
     const failureHelpActions = document.getElementById('failureHelpActions');
@@ -313,7 +335,8 @@ document.addEventListener('DOMContentLoaded', () => {
         error: { label: 'Issue', icon: 'fa-exclamation' },
         cancelled: { label: 'Cancelled', icon: 'fa-xmark', state: 'error' },
         connecting: { label: 'Reconnecting', icon: 'fa-tower-broadcast' },
-        offline: { label: 'Offline', icon: 'fa-plug-circle-xmark', state: 'error' }
+        offline: { label: 'Offline', icon: 'fa-plug-circle-xmark', state: 'error' },
+        updating: { label: 'Updating', icon: 'fa-arrows-rotate', state: 'info' }
     };
 
     // Messages sit on top of the connection state briefly, then the pill falls back to it.
@@ -321,6 +344,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const STATUS_PILL_MAX_MS = 7000;
     let serverConnection = 'starting'; // 'starting' | 'ready' | 'reconnecting'
     let statusPillTimer = null;
+    // Mirrors the server's tool update gate: 'idle' | 'waiting' | 'installing'.
+    let toolUpdateState = { phase: 'idle', tool: null, activeCount: 0, waitingCount: 0 };
+
+    function plural(count, one, many) {
+        return `${count} ${count === 1 ? one : many}`;
+    }
+
+    function getToolUpdateStatus() {
+        const { phase, tool, activeCount, waitingCount } = toolUpdateState;
+        const name = tool || 'tools';
+        if (phase === 'waiting' && activeCount > 0) {
+            const queued = waitingCount > 0 ? `; ${plural(waitingCount, 'download waits', 'downloads wait')} for it` : '';
+            return {
+                message: `${name} update installs after ${plural(activeCount, 'download finishes', 'downloads finish')}${queued}`,
+                type: 'updating', label: 'Update waiting', wave: 'ready'
+            };
+        }
+        if (phase === 'waiting' || phase === 'installing') {
+            return { message: `Installing ${name} update. Downloads resume right after`, type: 'updating', label: 'Updating', wave: 'ready' };
+        }
+        return null;
+    }
 
     function getConnectionStatus() {
         if (serverConnection === 'starting') {
@@ -332,7 +377,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (navigator.onLine === false) {
             return { message: "You're offline. Reconnect to download", type: 'offline', label: 'Offline', wave: 'offline' };
         }
-        return { message: 'Connected to server', type: 'success', label: 'Ready', wave: 'ready', idle: true };
+        return getToolUpdateStatus() ||
+            { message: 'Connected to server', type: 'success', label: 'Ready', wave: 'ready', idle: true };
+    }
+
+    function setToolUpdateState(next) {
+        const wasIdle = toolUpdateState.phase === 'idle';
+        toolUpdateState = { ...toolUpdateState, ...next };
+        if (wasIdle && toolUpdateState.phase === 'idle') return;
+        // Leave a timed message up; the pill falls back to this state after it.
+        if (!statusPillTimer) showConnectionStatus({ announce: wasIdle || toolUpdateState.phase === 'idle' });
     }
 
     function renderStatusPill(message, type, label, idle = false) {
@@ -525,6 +579,106 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ===== LOGIN COOKIE HEALTH =====
+    const cookiesStatusDesc = document.getElementById('cookiesStatusDesc');
+    const COOKIE_WARNING_DISMISSED_KEY = 'gvl.cookieWarningDismissed';
+    const COOKIE_DEFAULT_DESC = 'Import cookies to download age-restricted or members-only videos';
+    let cookieHealth = null;
+    let cookieHealthCheckedAt = 0;
+
+    function formatCookieDate(timestamp) {
+        return new Date(timestamp).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    function formatCookieCountdown(timestamp) {
+        const hours = Math.round((timestamp - Date.now()) / 3600000);
+        if (hours <= 1) return 'within the hour';
+        if (hours < 36) return `in ${hours} hours`;
+        return `in ${Math.round(hours / 24)} days`;
+    }
+
+    function describeCookieHealth(health) {
+        switch (health?.status) {
+            case 'valid':
+                return { text: `Signed in to YouTube. Login lasts until ${formatCookieDate(health.expiresAt)}`, tone: 'ok' };
+            case 'expiring':
+                return { text: `YouTube login expires ${formatCookieCountdown(health.expiresAt)}. Import fresh cookies to keep signed-in downloads working`, tone: 'warn' };
+            case 'expired':
+                return { text: `YouTube login expired on ${formatCookieDate(health.expiresAt)}. Import fresh cookies`, tone: 'bad' };
+            case 'session':
+                return { text: 'Imported a browser-session login, which YouTube ends when that browser closes. Import again if downloads ask you to sign in', tone: 'warn' };
+            case 'no-login':
+                return { text: 'Cookies imported, but no YouTube sign-in was found in them. Export again while signed in', tone: 'warn' };
+            case 'invalid':
+                return { text: "The imported cookies file can't be read. Import it again", tone: 'bad' };
+            default:
+                return { text: COOKIE_DEFAULT_DESC, tone: 'none' };
+        }
+    }
+
+    function cookieWarningKey(health) {
+        return `${health.status}:${health.expiresAt || ''}`;
+    }
+
+    function rememberCookieWarningDismissed() {
+        if (cookieHealth) localStorage.setItem(COOKIE_WARNING_DISMISSED_KEY, cookieWarningKey(cookieHealth));
+    }
+
+    function showCookieExpiryHelp(health) {
+        const expired = health.status === 'expired';
+        renderHelpPanel({
+            title: expired ? 'Your YouTube login has expired.' : `Your YouTube login expires ${formatCookieCountdown(health.expiresAt)}.`,
+            description: expired
+                ? 'Downloads that need a signed-in account (age-restricted, members-only, private) will fail until you import fresh cookies.'
+                : 'Import fresh cookies now so age-restricted and members-only downloads keep working.',
+            steps: [
+                'Open YouTube in your browser and make sure you are signed in.',
+                'Export cookies with the helper and import them here.'
+            ],
+            actionLabel: 'Import fresh cookies',
+            action: () => openCookiesHelperFlow()
+        }, 'Sign-in cookies', 'cookies');
+    }
+
+    async function refreshCookieHealth({ warn = false } = {}) {
+        if (!window.localApiAuth?.authorizedFetch) return null;
+        try {
+            const response = await window.localApiAuth.authorizedFetch('/cookies-status');
+            if (!response.ok) return null;
+            cookieHealth = await response.json();
+            cookieHealthCheckedAt = Date.now();
+        } catch (error) {
+            console.warn('Could not read cookie status:', error);
+            return null;
+        }
+
+        const { text, tone } = describeCookieHealth(cookieHealth);
+        if (cookiesStatusDesc) {
+            cookiesStatusDesc.textContent = text;
+            cookiesStatusDesc.dataset.tone = tone;
+        }
+        if (importCookiesBtn) {
+            const needsFresh = tone === 'warn' || tone === 'bad';
+            importCookiesBtn.innerHTML = `<i class="fas fa-cookie-bite"></i> ${needsFresh ? 'Import fresh' : 'Import'}`;
+        }
+
+        const needsWarning = cookieHealth.status === 'expiring' || cookieHealth.status === 'expired';
+        if (needsWarning && warn && localStorage.getItem(COOKIE_WARNING_DISMISSED_KEY) !== cookieWarningKey(cookieHealth)) {
+            showCookieExpiryHelp(cookieHealth);
+        } else if (!needsWarning && failureHelpKind === 'cookies') {
+            // Fresh cookies were imported; the warning has done its job.
+            failureHelpKind = null;
+            hideFailureHelp();
+        }
+        return cookieHealth;
+    }
+
+    // Re-check when the window regains focus, e.g. after the cookie helper closes.
+    window.addEventListener('focus', () => {
+        if (Date.now() - cookieHealthCheckedAt > 10000) void refreshCookieHealth({ warn: true });
+    });
+    window.setInterval(() => void refreshCookieHealth({ warn: true }), 6 * 60 * 60 * 1000);
+
     async function openCookiesHelperFlow() {
         if (window.electronAPI && window.electronAPI.openCookiesHelper) {
             await window.electronAPI.openCookiesHelper();
@@ -579,7 +733,13 @@ document.addEventListener('DOMContentLoaded', () => {
         showAlert('Open folder is only available in the desktop app.', 'Not Available');
     }
 
-    function hideFailureHelp() {
+    function hideFailureHelp({ dismissed = false } = {}) {
+        // Download activity clears failure help but leaves the login warning up.
+        if (failureHelpKind === 'cookies') {
+            if (!dismissed) return;
+            rememberCookieWarningDismissed();
+        }
+        failureHelpKind = null;
         setElementHiddenState(failureHelpPanel, true);
         if (failureHelpTitle) {
             failureHelpTitle.textContent = 'We found a likely cause';
@@ -714,22 +874,28 @@ document.addEventListener('DOMContentLoaded', () => {
             steps: [
                 'Retry once in case the source returned a temporary response.',
                 'Run the setup health check to confirm yt-dlp, FFmpeg, cookies, and folder access look healthy.',
-                'If it keeps failing, generate diagnostics so the exact error can be reviewed.'
+                'If it keeps failing, report it with diagnostics attached so the exact error can be reviewed.'
             ],
-            actionLabel: 'Generate Diagnostics',
+            actionLabel: 'Report this problem',
             action: () => {
-                openSettingsWithSection(setupHealthSection);
-                setSetupHealthSectionVisibility(true);
-                const generateDiagnosticsBtn = document.getElementById('generateDiagnosticsBtn');
-                generateDiagnosticsBtn?.click();
+                openReportProblem({ message: `A download failed with: ${String(errorMessage).slice(0, 500)}\n\n` });
             }
         };
     }
 
+    // 'failure' after a failed download, 'cookies' for the login expiry warning.
+    let failureHelpKind = null;
+
     function showFailureHelp(errorMessage) {
         if (!failureHelpPanel || !errorMessage) return;
-        const config = buildFailureHelpConfig(errorMessage);
+        renderHelpPanel(buildFailureHelpConfig(errorMessage), 'Why did this fail?', 'failure');
+    }
 
+    function renderHelpPanel(config, eyebrow, kind) {
+        failureHelpKind = kind;
+        if (failureHelpEyebrow) {
+            failureHelpEyebrow.textContent = eyebrow;
+        }
         if (failureHelpTitle) {
             failureHelpTitle.textContent = config.title;
         }
@@ -1063,7 +1229,10 @@ document.addEventListener('DOMContentLoaded', () => {
         ws.onopen = () => {
             void flushDismissedDownloads();
             console.log('WebSocket connection established.');
+            // The server re-sends its update state on connect if one is running.
+            toolUpdateState = { phase: 'idle', tool: null, activeCount: 0, waitingCount: 0 };
             setServerConnection('ready');
+            void refreshCookieHealth({ warn: true });
 
             const connectionIndicators = document.querySelectorAll('.connection-status');
             connectionIndicators.forEach(indicator => {
@@ -1287,10 +1456,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 updateDownloadStats();
                 break;
+            case 'tool_update_state':
+                setToolUpdateState({
+                    phase: data.phase || 'idle',
+                    tool: data.tool || null,
+                    activeCount: Number(data.activeCount) || 0,
+                    waitingCount: Number(data.waitingCount) || 0
+                });
+                break;
+            case 'tool_update_wait': {
+                const waitingItemState = downloadItemsState.get(itemId);
+                if (!waitingItemState) break;
+                if (data.waiting) {
+                    waitingItemState.waitingForToolUpdate = true;
+                    updateDownloadItemStatus(itemId, `Waiting for the ${data.tool || 'tool'} update, starts right after`, source);
+                } else if (waitingItemState.waitingForToolUpdate) {
+                    waitingItemState.waitingForToolUpdate = false;
+                    updateDownloadItemStatus(itemId, 'Starting...', source);
+                }
+                break;
+            }
             case 'tool_update_complete':
                 // Handle automatic tool update notifications (yt-dlp only for auto-updates)
-                if (data.ytdlp && data.ytdlp.updated) {
-                    const updateMsg = `✅ yt-dlp updated: ${data.ytdlp.oldVersion} → ${data.ytdlp.newVersion}`;
+                if ((data.ytdlp && data.ytdlp.updated) || (data.ffmpeg && data.ffmpeg.updated)) {
+                    const updateMsg = [
+                        data.ytdlp?.updated ? `yt-dlp updated: ${data.ytdlp.oldVersion} → ${data.ytdlp.newVersion}` : '',
+                        data.ffmpeg?.updated ? `FFmpeg updated to ${data.ffmpeg.newVersion}` : ''
+                    ].filter(Boolean).join(' · ');
                     console.log(updateMsg);
                     if (userSettings.notificationPopup) {
                         showDesktopNotification('Tool Updated', updateMsg);
@@ -2803,6 +2995,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function populateSettingsModal() {
+        void refreshCookieHealth();
         if (!settingsModal) return;
 
         setSetupHealthSectionVisibility(false);
@@ -3056,6 +3249,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const result = await window.updateTools();
 
+                if (result && result.deferred) {
+                    const count = result.waitingFor || 1;
+                    showUpdateStatus(`${result.tool || 'Tool'} update downloaded and verified. It installs after ${count === 1 ? 'the running download finishes' : `the ${count} running downloads finish`}; new downloads wait for it.`, 'success');
+                    return;
+                }
+
                 if (result && result.error) {
                     showUpdateStatus(`Error: ${result.error}`, 'error');
                     updateToolsBtn.disabled = false;
@@ -3083,10 +3282,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Check FFmpeg results
                     if (result.ffmpeg) {
-                        if (result.ffmpeg.hasUpdate) {
-                            message += `🔄 FFmpeg update available: ${result.ffmpeg.latestVersion}\n`;
-                            message += '💡 Manual download required: https://ffmpeg.org/download.html\n';
+                        if (result.ffmpeg.updated) {
+                            message += `✅ FFmpeg updated: ${result.ffmpeg.oldVersion} → ${result.ffmpeg.newVersion}\n`;
                             hasUpdates = true;
+                        } else if (result.ffmpeg.hasUpdate) {
+                            message += `🔄 FFmpeg ${result.ffmpeg.latestVersion} is available but could not be installed: ${result.ffmpeg.reason || 'unknown error'}\n`;
+                            hasErrors = true;
                         } else if (result.ffmpeg.error) {
                             message += `❌ FFmpeg check failed: ${result.ffmpeg.error}\n`;
                             hasErrors = true;
@@ -3115,45 +3316,191 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Generate diagnostics bundle button
+    // Diagnostics: the same report backs "Generate" and "Report a problem".
+    function localApiUrl(pathname) {
+        const serverPort = ws?.url?.match(/:(\d+)/)?.[1] || '9875';
+        return `http://127.0.0.1:${serverPort}${pathname}`;
+    }
+
+    function buildDiagnosticsContext() {
+        const wsStates = ['connecting', 'open', 'closing', 'closed'];
+        return {
+            settings: userSettings,
+            renderer: {
+                viewport: `${window.innerWidth}x${window.innerHeight}`,
+                devicePixelRatio: window.devicePixelRatio,
+                online: navigator.onLine,
+                userAgent: navigator.userAgent,
+                websocketState: ws ? wsStates[ws.readyState] : 'not created',
+                activeTab: activeDownloader,
+                errors: diagnosticsErrorLog,
+            },
+        };
+    }
+
+    async function downloadDiagnosticsFile() {
+        const response = await window.localApiAuth.authorizedFetch(localApiUrl('/diagnostics'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(buildDiagnosticsContext()),
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to generate diagnostics: ${response.statusText}`);
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `diagnostics-${Date.now()}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    }
+
     const generateDiagnosticsBtn = document.getElementById('generateDiagnosticsBtn');
     if (generateDiagnosticsBtn) {
+        const generateDiagnosticsLabel = generateDiagnosticsBtn.innerHTML;
         generateDiagnosticsBtn.onclick = async () => {
             try {
                 generateDiagnosticsBtn.disabled = true;
                 generateDiagnosticsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
-
-                const serverPort = ws?.url?.match(/:(\d+)/)?.[1] || '9875';
-                const diagnosticsUrl = `http://127.0.0.1:${serverPort}/diagnostics`;
-
-            const response = await window.localApiAuth.authorizedFetch(diagnosticsUrl);
-                if (!response.ok) {
-                    throw new Error(`Failed to generate diagnostics: ${response.statusText}`);
-                }
-
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `diagnostics-${Date.now()}.txt`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-
+                await downloadDiagnosticsFile();
                 showStatus('Diagnostics bundle downloaded successfully!', activeDownloader, 'success');
             } catch (error) {
                 console.error('Error generating diagnostics:', error);
                 showStatus(`Failed to generate diagnostics: ${error.message}`, activeDownloader, 'error');
             } finally {
                 generateDiagnosticsBtn.disabled = false;
-                generateDiagnosticsBtn.innerHTML = '<i class="fas fa-bug"></i> Generate Diagnostics Bundle';
+                generateDiagnosticsBtn.innerHTML = generateDiagnosticsLabel;
             }
         };
     }
 
+    // --- Report a problem ---
+    const reportProblemModal = document.getElementById('reportProblemModal');
+    const reportProblemForm = document.getElementById('reportProblemForm');
+    const reportProblemMessage = document.getElementById('reportProblemMessage');
+    const reportProblemEmail = document.getElementById('reportProblemEmail');
+    const reportProblemIncludeDiagnostics = document.getElementById('reportProblemIncludeDiagnostics');
+    const reportProblemStatus = document.getElementById('reportProblemStatus');
+    const sendReportProblemBtn = document.getElementById('sendReportProblemBtn');
+    const cancelReportProblemBtn = document.getElementById('cancelReportProblemBtn');
+    const REPORT_EMAIL_KEY = 'gvl.reportEmail';
+    let reportProblemSending = false;
+
+    function setReportStatus(text, tone = '') {
+        if (!reportProblemStatus) return;
+        reportProblemStatus.textContent = text;
+        if (tone) reportProblemStatus.dataset.tone = tone;
+        else delete reportProblemStatus.dataset.tone;
+    }
+
+    // Consent is asked per report: the attachment box always starts unticked.
+    function openReportProblem({ message = '' } = {}) {
+        if (!reportProblemModal || !reportProblemForm) return;
+        reportProblemForm.classList.remove('is-sent');
+        reportProblemMessage.value = message;
+        reportProblemEmail.value = localStorage.getItem(REPORT_EMAIL_KEY) || '';
+        reportProblemIncludeDiagnostics.checked = false;
+        if (cancelReportProblemBtn) cancelReportProblemBtn.textContent = 'Cancel';
+        setReportStatus('');
+        openModalWithFocus(reportProblemModal, reportProblemMessage);
+        if (message) {
+            window.setTimeout(() => reportProblemMessage.setSelectionRange(message.length, message.length), 0);
+        }
+    }
+
+    function closeReportProblem() {
+        if (!reportProblemModal || reportProblemSending) return;
+        closeModalWithFocusRestore(reportProblemModal);
+        // The settings modal underneath still needs the scroll lock.
+        const settingsModalElement = document.getElementById('settingsModal');
+        if (settingsModalElement && settingsModalElement.style.display === 'flex') {
+            document.body.classList.add('modal-open');
+        }
+    }
+
+    if (reportProblemModal && reportProblemForm) {
+        document.getElementById('reportProblemBtn')?.addEventListener('click', () => openReportProblem());
+        document.getElementById('closeReportProblemBtn')?.addEventListener('click', closeReportProblem);
+        cancelReportProblemBtn?.addEventListener('click', closeReportProblem);
+        reportProblemModal.addEventListener('click', (event) => {
+            if (event.target === reportProblemModal) closeReportProblem();
+        });
+        // Capture phase, so Escape closes only this dialog and not settings too.
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && reportProblemModal.style.display === 'flex') {
+                event.stopPropagation();
+                closeReportProblem();
+            }
+        }, true);
+
+        document.getElementById('reportProblemPreviewBtn')?.addEventListener('click', async () => {
+            setReportStatus('Building the diagnostics report...');
+            try {
+                await downloadDiagnosticsFile();
+                setReportStatus('A copy was saved to your downloads. This is exactly what gets attached.', 'ok');
+            } catch (error) {
+                setReportStatus(error.message, 'bad');
+            }
+        });
+
+        reportProblemForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (reportProblemSending) return;
+            const message = reportProblemMessage.value.trim();
+            const email = reportProblemEmail.value.trim();
+            if (!message) {
+                setReportStatus('Describe what went wrong first.', 'bad');
+                reportProblemMessage.focus();
+                return;
+            }
+            if (email && !reportProblemEmail.checkValidity()) {
+                setReportStatus('That email address does not look right. Fix it or leave it empty.', 'bad');
+                reportProblemEmail.focus();
+                return;
+            }
+
+            const includeDiagnostics = reportProblemIncludeDiagnostics.checked;
+            const originalLabel = sendReportProblemBtn.innerHTML;
+            reportProblemSending = true;
+            sendReportProblemBtn.disabled = true;
+            sendReportProblemBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+            setReportStatus(includeDiagnostics ? 'Building the diagnostics report and sending...' : 'Sending...');
+            try {
+                const response = await window.localApiAuth.authorizedFetch(localApiUrl('/api/report-problem'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message,
+                        email,
+                        includeDiagnostics,
+                        ...(includeDiagnostics ? buildDiagnosticsContext() : {}),
+                    }),
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.error || `The report could not be sent (HTTP ${response.status}).`);
+                if (email) localStorage.setItem(REPORT_EMAIL_KEY, email);
+                else localStorage.removeItem(REPORT_EMAIL_KEY);
+                reportProblemForm.classList.add('is-sent');
+                if (cancelReportProblemBtn) cancelReportProblemBtn.textContent = 'Close';
+                setReportStatus(
+                    `${result.diagnosticsIncluded ? 'Report and diagnostics sent.' : 'Report sent.'} ${email ? `Replies go to ${email}.` : 'Thanks for telling us.'}`,
+                    'ok'
+                );
+            } catch (error) {
+                setReportStatus(error.message, 'bad');
+            } finally {
+                reportProblemSending = false;
+                sendReportProblemBtn.disabled = false;
+                sendReportProblemBtn.innerHTML = originalLabel;
+            }
+        });
+    }
+
     if (dismissFailureHelpBtn) {
-        dismissFailureHelpBtn.onclick = hideFailureHelp;
+        dismissFailureHelpBtn.onclick = () => hideFailureHelp({ dismissed: true });
     }
 
     if (failureHelpPrimaryBtn) {

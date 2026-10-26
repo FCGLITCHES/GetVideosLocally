@@ -26,6 +26,9 @@ function registerApiRoutes(
     retryAllFailedDownloads,
     dismissDownloadItem,
     previewPlaylist,
+    collectDiagnostics = null,
+    getCookieHealth = null,
+    sendProblemReport = null,
     usageTelemetry = null,
     logger = require("../utils/logger").logger,
   },
@@ -346,7 +349,7 @@ function registerApiRoutes(
   app.post("/update-tools", async (req, res) => {
     try {
       logger.log("🔄 Manual tool update request received");
-      const result = await checkAndUpdateTools(true);
+      const result = await checkAndUpdateTools(true, true, { returnWhenDeferred: true });
       res.json(result);
     } catch (error) {
       logger.error("❌ Error in manual update endpoint:", error);
@@ -387,7 +390,7 @@ function registerApiRoutes(
   app.post("/force-update-tools", async (req, res) => {
     try {
       logger.log("🔄 Force update request received");
-      const result = await checkAndUpdateTools(true);
+      const result = await checkAndUpdateTools(true, true, { returnWhenDeferred: true });
       res.json(result);
     } catch (error) {
       logger.error("❌ Error in force update endpoint:", error);
@@ -395,97 +398,76 @@ function registerApiRoutes(
     }
   });
 
-  app.get("/diagnostics", async (req, res) => {
+  // GET works without the app window; POST lets the window add its settings,
+  // state and captured UI errors so the report covers both processes.
+  async function sendDiagnostics(req, res) {
     try {
-      const packageJson = require("../../package.json");
-      const diagnostics = {
-        timestamp: new Date().toISOString(),
-        application: {
-          name: packageJson.name,
-          version: packageJson.version,
-          description: packageJson.description,
-        },
-        system: {
-          platform: process.platform,
-          arch: process.arch,
-          nodeVersion: process.version,
-          osType: os.type(),
-          osRelease: os.release(),
-          osVersion: os.version(),
-          totalMemory: `${Math.round(os.totalmem() / 1024 / 1024 / 1024)} GB`,
-          cpuCount: os.cpus().length,
-        },
-        tools: {
-          ytdlp: {
-            version: await getToolVersion(ytdlpExecutable),
-            path: ytdlpExecutable,
-          },
-          ffmpeg: {
-            version: await getToolVersion(ffmpegExecutable),
-            path: ffmpegExecutable,
-          },
-        },
-        environment: {
-          electron: process.versions.electron || "N/A",
-          chrome: process.versions.chrome || "N/A",
-          v8: process.versions.v8 || "N/A",
-        },
-        flags: {
-          nodeEnv: process.env.NODE_ENV || "production",
-          ytdlpPath: process.env.YTDLP_PATH || "default",
-          ffmpegPath: process.env.FFMPEG_PATH || "default",
-        },
-      };
+      let text;
+      if (collectDiagnostics) {
+        const body = req.body && typeof req.body === "object" ? req.body : {};
+        const renderer = body.renderer && typeof body.renderer === "object" ? body.renderer : null;
+        if (renderer && body.settings && typeof body.settings === "object") renderer.settings = body.settings;
+        ({ text } = await collectDiagnostics({ renderer }));
+      } else {
+        const packageJson = require("../../package.json");
+        text = [
+          "# GetVideosLocally Diagnostics Report",
+          `Generated: ${new Date().toISOString()} · ${packageJson.name} ${packageJson.version}`,
+          `- OS: ${os.type()} ${os.release()} (${process.platform}/${process.arch})`,
+          `- yt-dlp: ${await getToolVersion(ytdlpExecutable)} · ${ytdlpExecutable}`,
+          `- FFmpeg: ${await getToolVersion(ffmpegExecutable)} · ${ffmpegExecutable}`,
+        ].join("\n");
+      }
 
-      const output = `# GetVideosLocally Diagnostics Bundle
-Generated: ${diagnostics.timestamp}
-
-## Application Information
-- Name: ${diagnostics.application.name}
-- Version: ${diagnostics.application.version}
-- Description: ${diagnostics.application.description}
-
-## System Information
-- Platform: ${diagnostics.system.platform}
-- Architecture: ${diagnostics.system.arch}
-- Node.js Version: ${diagnostics.system.nodeVersion}
-- OS: ${diagnostics.system.osType} ${diagnostics.system.osRelease}
-- OS Version: ${diagnostics.system.osVersion}
-- Total Memory: ${diagnostics.system.totalMemory}
-- CPU Cores: ${diagnostics.system.cpuCount}
-
-## Tool Versions
-### yt-dlp
-- Version: ${diagnostics.tools.ytdlp.version}
-- Path: ${diagnostics.tools.ytdlp.path}
-
-### FFmpeg
-- Version: ${diagnostics.tools.ffmpeg.version}
-- Path: ${diagnostics.tools.ffmpeg.path}
-
-## Environment
-- Electron Version: ${diagnostics.environment.electron}
-- Chrome Version: ${diagnostics.environment.chrome}
-- V8 Version: ${diagnostics.environment.v8}
-
-## Configuration Flags
-- NODE_ENV: ${diagnostics.flags.nodeEnv}
-- YTDLP_PATH: ${diagnostics.flags.ytdlpPath}
-- FFMPEG_PATH: ${diagnostics.flags.ffmpegPath}
-
----
-
-**Note:** This diagnostics bundle contains only system and version information. No personal data, URLs, or sensitive information is included.
-`;
-
-      res.setHeader("Content-Type", "text/plain");
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="diagnostics-${Date.now()}.txt"`,
       );
-      res.send(output);
+      res.send(text);
     } catch (error) {
       logger.error("❌ Error generating diagnostics:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  app.get("/diagnostics", sendDiagnostics);
+  app.post("/diagnostics", sendDiagnostics);
+
+  // "Report a problem". The diagnostics report is only built and attached
+  // when the user ticked the consent box for this report.
+  app.post("/api/report-problem", async (req, res) => {
+    if (!sendProblemReport) {
+      return res.status(503).json({ error: "Problem reports are not available in this build." });
+    }
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const { message, email = "", includeDiagnostics = false } = body;
+    if (typeof includeDiagnostics !== "boolean") {
+      return res.status(400).json({ error: "includeDiagnostics must be true or false." });
+    }
+    try {
+      let diagnostics = null;
+      if (includeDiagnostics && collectDiagnostics) {
+        const renderer = body.renderer && typeof body.renderer === "object" ? body.renderer : null;
+        if (renderer && body.settings && typeof body.settings === "object") renderer.settings = body.settings;
+        ({ text: diagnostics } = await collectDiagnostics({ renderer }));
+      }
+      const result = await sendProblemReport({ message, email, diagnostics });
+      logger.info(`📨 Problem report sent${diagnostics ? " with diagnostics" : ""}`);
+      res.json({ ok: true, id: result.id, diagnosticsIncluded: Boolean(diagnostics) });
+    } catch (error) {
+      logger.warn("[ProblemReport] Not sent:", error.message);
+      res.status(error.status || 500).json({ error: error.message });
+    }
+  });
+
+  // Login cookie state for the settings screen and the expiry warning.
+  // Reports only states and dates, never cookie names or values.
+  app.get("/cookies-status", async (req, res) => {
+    try {
+      res.json(getCookieHealth ? await getCookieHealth() : { status: "unknown" });
+    } catch (error) {
+      logger.error("❌ Error reading cookie status:", error);
       res.status(500).json({ error: error.message });
     }
   });

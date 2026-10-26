@@ -189,4 +189,4 @@ const logger = new Logger({
   context: "server",
 });
 
-module.exports = { Logger, logger };
+module.exports = { Logger, logger, LOG_FILE };

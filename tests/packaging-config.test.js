@@ -8,7 +8,7 @@ const builderConfig = require("../electron-builder.json");
 const packageManifest = require("../package.json");
 const packageLock = require("../package-lock.json");
 
-test("3.2.7 hotfix metadata stays aligned across package and UI boundaries", () => {
+test("package versions agree and the 3.2.7 UI changelog stays aligned", () => {
   const indexHtml = fs.readFileSync(
     path.join(projectRoot, "index.html"),
     "utf8",
@@ -18,9 +18,10 @@ test("3.2.7 hotfix metadata stays aligned across package and UI boundaries", () 
     "utf8",
   );
 
-  assert.equal(packageManifest.version, "3.2.7");
-  assert.equal(packageLock.version, "3.2.7");
-  assert.equal(packageLock.packages[""].version, "3.2.7");
+  // Patch releases bump the package only; the in-app changelog stays at 3.2.7.
+  assert.match(packageManifest.version, /^3\.2\.\d+$/);
+  assert.equal(packageLock.version, packageManifest.version);
+  assert.equal(packageLock.packages[""].version, packageManifest.version);
   assert.match(indexHtml, /data-app-version="3\.2\.7"/);
   assert.match(rendererScript, /DEFAULT_APP_VERSION = '3\.2\.7'/);
   assert.match(rendererScript, /One Cookie File/);
@@ -137,16 +138,22 @@ test("public branding keeps only the canonical Logo1 icon", () => {
 });
 
 test("runtime tool payload excludes unused ffplay", () => {
-  const binDir = path.join(projectRoot, "bin");
+  const toolsManifest = require("../tools-manifest.json");
+  const bundled = toolsManifest.tools.flatMap((tool) => tool.files.map((file) => file.name)).sort();
   const ffmpegUpdater = fs.readFileSync(
     path.join(projectRoot, "backend", "services", "ffmpeg-update-security.js"),
     "utf8",
   );
 
-  assert.equal(fs.existsSync(path.join(binDir, "ffplay.exe")), false);
-  assert.equal(fs.existsSync(path.join(binDir, "ffmpeg.exe")), true);
-  assert.equal(fs.existsSync(path.join(binDir, "ffprobe.exe")), true);
+  assert.deepEqual(bundled, ["ffmpeg.exe", "ffprobe.exe", "node.exe", "yt-dlp.exe"]);
   assert.doesNotMatch(ffmpegUpdater, /"ffplay\.exe"/);
+});
+
+test("builds fetch the pinned tools first and git never tracks them", () => {
+  const gitignore = fs.readFileSync(path.join(projectRoot, ".gitignore"), "utf8");
+  assert.equal(packageManifest.scripts["prebuild:installer"], "npm run tools:fetch");
+  assert.equal(packageManifest.scripts["prebuild:portable"], "npm run tools:fetch");
+  assert.match(gitignore, /^\/bin\/$/m);
 });
 
 test("uninstaller cleans current identifiers and preserves downloads by default", () => {

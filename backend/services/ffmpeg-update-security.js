@@ -69,12 +69,12 @@ async function downloadFile(downloadUrl, destinationPath) {
     const requestUrl = (currentUrl, redirectCount = 0) => {
       const parsed = new URL(currentUrl);
       if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
-        cleanup(new Error("FFmpeg updates require an HTTPS URL without credentials"));
+        cleanup(new Error("Tool updates require an HTTPS URL without credentials"));
         return;
       }
       const request = activeRequest = https.get(parsed, (response) => {
         response.on("error", cleanup);
-        response.on("aborted", () => cleanup(new Error("FFmpeg download interrupted")));
+        response.on("aborted", () => cleanup(new Error("Download interrupted")));
         if (
           response.statusCode >= 300 &&
           response.statusCode < 400 &&
@@ -82,7 +82,7 @@ async function downloadFile(downloadUrl, destinationPath) {
         ) {
           response.resume();
           if (redirectCount >= 5) {
-            cleanup(new Error("Too many redirects while downloading FFmpeg"));
+            cleanup(new Error("Too many redirects while downloading an update"));
             return;
           }
           try {
@@ -122,6 +122,9 @@ async function installFfmpegFromZip({
   tmpDir,
   logger = console,
   downloader = downloadFile,
+  // Wraps the binary swap; the server passes the tool update gate so the
+  // download and extraction run while downloads continue.
+  runExclusive = (fn) => fn(),
 }) {
   const expectedChecksum = getManifestChecksum(manifest, version);
   if (!expectedChecksum) {
@@ -132,8 +135,10 @@ async function installFfmpegFromZip({
     };
   }
 
+  // Stage on the same volume as binDir so the final renames cannot fail
+  // with EXDEV when the app is installed on a different drive than %TEMP%.
   const updateTmpDir =
-    tmpDir || path.join(require("os").tmpdir(), `ffmpeg-update-${Date.now()}`);
+    tmpDir || path.join(binDir, `.ffmpeg-update-${Date.now()}`);
   const zipPath = path.join(updateTmpDir, "ffmpeg-essentials.zip");
   const stageDir = path.join(updateTmpDir, "stage");
   const backups = [];
@@ -161,51 +166,53 @@ async function installFfmpegFromZip({
       return { success: false, error: "Archive must contain both FFmpeg and FFprobe" };
     }
 
-    for (const baseName of extractedFiles) {
-      const destinationPath = path.join(binDir, baseName);
-      const backupPath = destinationPath + ".bak";
-      const stagePath = path.join(stageDir, baseName);
+    return await runExclusive(async () => {
+      for (const baseName of extractedFiles) {
+        const destinationPath = path.join(binDir, baseName);
+        const backupPath = destinationPath + ".bak";
+        const stagePath = path.join(stageDir, baseName);
 
-      if (fs.existsSync(destinationPath)) {
-        try {
-          if (fs.existsSync(backupPath)) {
-            fs.unlinkSync(backupPath);
+        if (fs.existsSync(destinationPath)) {
+          try {
+            if (fs.existsSync(backupPath)) {
+              fs.unlinkSync(backupPath);
+            }
+            fs.renameSync(destinationPath, backupPath);
+            backups.push({ baseName, backupPath, destinationPath });
+          } catch (error) {
+            rollbackInstalledFiles(installedFiles, binDir, backups);
+            rollbackBackups(backups);
+            return {
+              success: false,
+              error: `${baseName} is locked - close active downloads and try again`,
+            };
           }
-          fs.renameSync(destinationPath, backupPath);
-          backups.push({ baseName, backupPath, destinationPath });
+        }
+
+        try {
+          fs.renameSync(stagePath, destinationPath);
+          installedFiles.push(baseName);
         } catch (error) {
           rollbackInstalledFiles(installedFiles, binDir, backups);
           rollbackBackups(backups);
           return {
             success: false,
-            error: `${baseName} is locked - close active downloads and try again`,
+            error: `Failed to install ${baseName}: ${error.message}`,
           };
         }
       }
 
-      try {
-        fs.renameSync(stagePath, destinationPath);
-        installedFiles.push(baseName);
-      } catch (error) {
-        rollbackInstalledFiles(installedFiles, binDir, backups);
-        rollbackBackups(backups);
+      if (!(await testFFmpegWorking())) {
+        rollbackInstalledFiles(extractedFiles, binDir, backups);
         return {
           success: false,
-          error: `Failed to install ${baseName}: ${error.message}`,
+          error: "FFmpeg binary not working after update - rolled back",
         };
       }
-    }
 
-    if (!(await testFFmpegWorking())) {
-      rollbackInstalledFiles(extractedFiles, binDir, backups);
-      return {
-        success: false,
-        error: "FFmpeg binary not working after update - rolled back",
-      };
-    }
-
-    cleanupBackups(backups);
-    return { success: true, extractedFiles };
+      cleanupBackups(backups);
+      return { success: true, extractedFiles };
+    });
   } catch (error) {
     rollbackInstalledFiles(installedFiles, binDir, backups);
     rollbackBackups(backups);

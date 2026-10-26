@@ -153,6 +153,36 @@ test("matching SHA256 installs staged binaries and removes backups", async () =>
   }
 });
 
+test("default staging lives inside binDir so swaps never cross drives", async () => {
+  const tmpDir = makeTempDir("gvl-ffmpeg-stage-");
+  try {
+    const sourceZip = path.join(tmpDir, "source.zip");
+    const binDir = path.join(tmpDir, "bin");
+    createFfmpegZip(sourceZip);
+    writeExistingBinaries(binDir);
+    const checksum = await computeSha256(sourceZip);
+    let downloadedTo = null;
+    const result = await installFfmpegFromZip({
+      downloadUrl: "https://example.test/ffmpeg.zip",
+      version: "9.9",
+      manifest: { 9.9: checksum },
+      binDir,
+      testFFmpegWorking: async () => true,
+      logger: silentLogger(),
+      downloader: async (_, destinationPath) => {
+        downloadedTo = destinationPath;
+        fs.copyFileSync(sourceZip, destinationPath);
+      },
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(path.dirname(path.dirname(downloadedTo)), binDir);
+    assert.deepEqual(fs.readdirSync(binDir).sort(), ["ffmpeg.exe", "ffprobe.exe"]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test("mismatched SHA256 rejects and leaves current binaries untouched", async () => {
   const tmpDir = makeTempDir("gvl-ffmpeg-mismatch-");
   try {

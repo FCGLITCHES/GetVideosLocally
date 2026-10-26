@@ -1,0 +1,47 @@
+{
+  "_comment": "Pinned tool binaries bundled into bin/ at build time. scripts/fetch-tools.js downloads each source over HTTPS, verifies the source sha256, extracts the listed files and verifies each file's sha256 before moving it into bin/. Update a tool by changing its version, url and both hashes together.",
+  "tools": [
+    {
+      "name": "yt-dlp",
+      "version": "2026.10.21",
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.21/yt-dlp.exe",
+      "sha256": "33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555",
+      "files": [
+        {
+          "name": "yt-dlp.exe",
+          "sha256": "33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555"
+        }
+      ]
+    },
+    {
+      "name": "FFmpeg",
+      "version": "8.1",
+      "url": "https://github.com/GyanD/codexffmpeg/releases/download/8.1/ffmpeg-8.1-essentials_build.zip",
+      "sha256": "8748283d821613d930b0e7be685aaa9df4ca6f0ad4d0c42fd02622b3623463c6",
+      "files": [
+        {
+          "name": "ffmpeg.exe",
+          "entry": "ffmpeg-8.1-essentials_build/bin/ffmpeg.exe",
+          "sha256": "1a65d5b0b10d8d9a81d2824a3538046a40ed3607c906b335a166add87613f705"
+        },
+        {
+          "name": "ffprobe.exe",
+          "entry": "ffmpeg-8.1-essentials_build/bin/ffprobe.exe",
+          "sha256": "54b944d6095c4588d7548424d7acd5118390a9d4f01b1c92f841547fc9a7429c"
+        }
+      ]
+    },
+    {
+      "name": "Node.js",
+      "version": "24.12.0",
+      "url": "https://nodejs.org/dist/v24.12.0/win-x64/node.exe",
+      "sha256": "2ffe3acc0458fdde999f50d11809bbe7c9b7ef204dcf17094e325d26ace101d8",
+      "files": [
+        {
+          "name": "node.exe",
+          "sha256": "2ffe3acc0458fdde999f50d11809bbe7c9b7ef204dcf17094e325d26ace101d8"
+        }
+      ]
+    }
+  ]
+}

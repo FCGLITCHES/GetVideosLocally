@@ -1,6 +1,6 @@
 {
   "name": "getvideoslocally",
-  "version": "3.2.8",
+  "version": "3.2.9",
   "description": "GetVideosLocally - Desktop app for downloading and converting videos from 1000+ supported sites",
   "main": "electron-main.js",
   "scripts": {
@@ -11,7 +11,11 @@
     "electron:dev": "cross-env NODE_ENV=development electron \".\"",
     "electron": "cross-env NODE_ENV=production electron \".\"",
     "build": "npm run build:installer",
+    "tools:fetch": "node scripts/fetch-tools.js",
+    "tools:check": "node scripts/fetch-tools.js --check",
+    "prebuild:portable": "npm run tools:fetch",
     "build:portable": "node build-portable.js",
+    "prebuild:installer": "npm run tools:fetch",
     "build:installer": "electron-builder --win --x64 -c electron-builder.json",
     "build:mac": "electron-builder --mac -c electron-builder.json",
     "build:linux": "electron-builder --linux -c electron-builder.json",
