@@ -278,16 +278,27 @@ const env = loadEnv(process.env);
   // queued, running processes finish and new ones wait until it is done.
   const toolUpdateGate = createToolUpdateGate();
   let toolUpdateRun = null;
+  let toolUpdateRunForced = false;
 
   function checkAndUpdateTools(
     forceCheck = false,
     notifyClients = false,
     { returnWhenDeferred = false } = {},
   ) {
-    if (!toolUpdateRun) {
-      toolUpdateRun = runToolUpdates(forceCheck, notifyClients).finally(() => {
-        toolUpdateRun = null;
-      });
+    // Callers share one run. A forced check that arrives during a routine one
+    // would only get its "checked recently" result, so it runs right after.
+    if (!toolUpdateRun || (forceCheck && !toolUpdateRunForced)) {
+      const previous = toolUpdateRun;
+      const next = (previous ? previous.catch(() => {}) : Promise.resolve())
+        .then(() => runToolUpdates(forceCheck, notifyClients))
+        .finally(() => {
+          if (toolUpdateRun === next) {
+            toolUpdateRun = null;
+            toolUpdateRunForced = false;
+          }
+        });
+      toolUpdateRun = next;
+      toolUpdateRunForced = forceCheck;
     }
     const run = toolUpdateRun;
     if (!returnWhenDeferred) return run;
@@ -2617,7 +2628,13 @@ const env = loadEnv(process.env);
   }
 
   async function getVideoInfo(clientId, videoUrl, itemId) {
-    return metadataService.getVideoInfo(clientId, videoUrl, itemId);
+    if (getCachedVideoInfo(videoUrl)) {
+      return metadataService.getVideoInfo(clientId, videoUrl, itemId);
+    }
+    // The lookup, or the preview lookup it joins, can be held by an update.
+    return whileToolUpdateHolds(clientId, itemId, activeProcesses.get(itemId)?.source, () =>
+      metadataService.getVideoInfo(clientId, videoUrl, itemId),
+    );
   }
 
   function getCachedVideoInfo(videoUrl) {
@@ -4719,9 +4736,9 @@ const env = loadEnv(process.env);
     });
   }
 
-  // Reserve a tool slot for a download, telling its window when the slot is
-  // held back by a pending tool update.
-  async function acquireToolSlotFor(clientId, itemId, source) {
+  // Runs work for a download, telling its window while a pending tool
+  // update holds that work back.
+  async function whileToolUpdateHolds(clientId, itemId, source, work) {
     const state = toolUpdateGate.getState();
     const held = state.phase !== "idle" && clientId && itemId;
     if (held) {
@@ -4733,16 +4750,22 @@ const env = loadEnv(process.env);
         waiting: true,
       });
     }
-    const release = await toolUpdateGate.acquire();
-    if (held) {
-      sendMessageToClient(clientId, {
-        type: "tool_update_wait",
-        itemId,
-        source,
-        waiting: false,
-      });
+    try {
+      return await work();
+    } finally {
+      if (held) {
+        sendMessageToClient(clientId, {
+          type: "tool_update_wait",
+          itemId,
+          source,
+          waiting: false,
+        });
+      }
     }
-    return release;
+  }
+
+  function acquireToolSlotFor(clientId, itemId, source) {
+    return whileToolUpdateHolds(clientId, itemId, source, () => toolUpdateGate.acquire());
   }
 
   async function runFFmpegCommand(

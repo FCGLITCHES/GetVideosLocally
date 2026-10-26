@@ -1953,7 +1953,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function updateDownloadItemError(itemId, errorMessage, source) {
+    function updateDownloadItemError(itemId, errorMessage, source, { restored = false } = {}) {
         const itemDiv = document.getElementById(`item-${itemId}`);
         const itemState = downloadItemsState.get(itemId);
         if (itemDiv) {
@@ -1980,7 +1980,8 @@ document.addEventListener('DOMContentLoaded', () => {
             showActionButtons(itemId);
         }
         updateDownloadStats();
-        showFailureHelp(errorMessage);
+        // A failure restored from a past session must not hide the login warning.
+        if (!(restored && failureHelpKind === 'cookies')) showFailureHelp(errorMessage);
     }
 
     function disableCancelButton(itemId, source) {
@@ -2448,7 +2449,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 (data.items || []).forEach((failed) => {
                     if (dismissedDownloadItems.has(failed.itemId)) return;
                     createDownloadItemStructure(failed.itemId, failed.title || 'Failed download', failed.source || 'youtube', false);
-                    updateDownloadItemError(failed.itemId, failed.message || 'Download failed', failed.source || 'youtube');
+                    updateDownloadItemError(failed.itemId, failed.message || 'Download failed', failed.source || 'youtube', { restored: true });
                     if (failed.thumbnail) updateDownloadItemThumbnail(failed.itemId, failed.thumbnail);
                     if (failed.format) updateDownloadItemFormat(failed.itemId, failed.format);
                     if (failed.quality) updateDownloadItemQuality(failed.itemId, failed.quality);
