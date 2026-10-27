@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Check for diagnostics bundle
         if: github.event.issue.state == 'open'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         id: check-diagnostics
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -35,7 +35,7 @@ jobs:
 
       - name: Add needs-diagnostics label if missing
         if: github.event.issue.state == 'open' && steps.check-diagnostics.outputs.hasDiagnostics == 'false'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -71,7 +71,7 @@ jobs:
 
       - name: Add has-diagnostics label
         if: github.event.issue.state == 'open' && steps.check-diagnostics.outputs.hasDiagnostics == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -98,7 +98,7 @@ jobs:
 
       - name: Auto-close stale issues without diagnostics
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -147,7 +147,7 @@ jobs:
 
       - name: Label categorization
         if: github.event.issue.state == 'open'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
