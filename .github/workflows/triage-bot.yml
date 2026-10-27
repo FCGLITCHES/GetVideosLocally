@@ -12,6 +12,8 @@ permissions:
 
 jobs:
   triage:
+    # Issues only: pull requests share issue_comment events but not the permissions.
+    if: ${{ !github.event.issue.pull_request }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

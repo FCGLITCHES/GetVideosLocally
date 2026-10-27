@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test tests/**/*.test.js",
+    "test": "node --test \"tests/**/*.test.js\"",
     "dev:electron": "npm run electron:dev",
     "electron:dev": "cross-env NODE_ENV=development electron \".\"",
     "electron": "cross-env NODE_ENV=production electron \".\"",
