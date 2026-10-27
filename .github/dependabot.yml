@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Electron ships Chromium security fixes; keep it current.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-name: electron
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
