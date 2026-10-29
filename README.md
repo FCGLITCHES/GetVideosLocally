@@ -11,6 +11,7 @@
 [![Electron](https://img.shields.io/badge/Electron-42.11.9-47848F.svg)](https://www.electronjs.org/)
 [![yt-dlp](https://img.shields.io/badge/yt--dlp-latest-red.svg)](https://github.com/yt-dlp/yt-dlp)
 [![Latest release](https://img.shields.io/github/v/release/FCGLITCHES/GetVideosLocally)](https://github.com/FCGLITCHES/GetVideosLocally/releases)
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/FCGLITCHES/badge.svg)](https://hub.xerj.org/contributors/FCGLITCHES)
 
 [Download](https://github.com/FCGLITCHES/GetVideosLocally/releases) •
 [Report a bug](https://github.com/FCGLITCHES/GetVideosLocally/issues) •
@@ -54,6 +55,12 @@ Recent releases include safeguards for local file operations and release mainten
 - Regression coverage for history persistence, playback, path traversal rejection and affected UI states
 
 See the [release history](https://github.com/FCGLITCHES/GetVideosLocally/releases) for version-specific details.
+
+## Open engineering, independently referenced
+
+A GetVideosLocally reliability improvement was [selected for the XERJ Corpus Hub](https://hub.xerj.org/contributors/FCGLITCHES) as a reference implementation for AI coding agents. The [selected commit](https://github.com/FCGLITCHES/GetVideosLocally/commit/29a04c9755123dfe38ce1822af2dbf6a6050b078) preserves dismissed download state when connections fail and retries queue cleanup. XERJ selected this specific contribution; inclusion is not a certification of the full application, video compatibility or conversion quality.
+
+**Trust and transparency:** The [source code](https://github.com/FCGLITCHES/GetVideosLocally), [release history](https://github.com/FCGLITCHES/GetVideosLocally/releases), [MIT licence](LICENSE), [automated tests](tests), and the security and reliability measures outlined above are public for review. GetVideosLocally operates locally without requiring an account or a cloud workflow.
 
 ## Quick start
 
