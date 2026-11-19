@@ -1,5 +1,5 @@
 // Electron main process setup
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, powerSaveBlocker, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, powerSaveBlocker, Tray, Menu, nativeImage, session } = require('electron');
 
 // Set application name
 app.setName('GetVideosLocally');
@@ -530,8 +530,12 @@ async function createWindow() {
     mainWindow = null;
   });
 
+  // Windows log-off/shutdown can end the process without a normal quit.
+  mainWindow.on('session-end', () => flushRendererStorage());
+
   mainWindow.on('close', async (event) => {
     saveWindowState(mainWindow);
+    flushRendererStorage();
 
     // If already quitting, allow close
     if (isQuitting) return;
@@ -729,8 +733,27 @@ app.on('window-all-closed', () => {
   }
 });
 
+// The user's preferences live in the renderer's localStorage. Chromium writes
+// it to disk lazily, so a crash, a forced close by the installer during an
+// update, or a Windows shutdown could drop the last few changes. Flush on
+// every settings save and again on the way out.
+function flushRendererStorage() {
+  try {
+    if (app.isReady()) session.defaultSession.flushStorageData();
+  } catch (error) {
+    console.warn('Unable to flush renderer storage:', error.message);
+  }
+}
+
+ipcMain.handle('flush-storage-data', (event) => {
+  assertTrustedIpcSender(event);
+  flushRendererStorage();
+  return true;
+});
+
 let quitCleanupStarted = false;
 app.on('before-quit', (event) => {
+  flushRendererStorage();
   if (quitCleanupStarted) return;
   event.preventDefault();
   quitCleanupStarted = true;

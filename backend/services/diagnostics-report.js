@@ -771,7 +771,14 @@ function detectIssues(data) {
     });
   }
 
-  const blockedFfmpeg = entries.filter((entry) => /not in the trust manifest/.test(entry.message) && now - entry.time < 30 * DAY_MS);
+  // Ignore blocks for a version that is already installed: those were logged
+  // by an older build before the user updated, so nothing is blocked now.
+  const installedFfmpegVersion = /ffmpeg version (\d+(?:\.\d+)*)/i.exec(tools.ffmpeg.version || "")?.[1];
+  const blockedFfmpeg = entries.filter((entry) => {
+    if (!/not in the trust manifest/.test(entry.message) || now - entry.time >= 30 * DAY_MS) return false;
+    const blockedVersion = /Version (\S+) is not in the trust manifest/.exec(entry.message)?.[1];
+    return !(blockedVersion && installedFfmpegVersion && blockedVersion === installedFfmpegVersion);
+  });
   if (blockedFfmpeg.length) {
     issues.add({
       id: "ffmpeg-update-blocked",

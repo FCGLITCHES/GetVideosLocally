@@ -299,7 +299,7 @@ test("close protection cancels the native event before awaiting renderer state",
   const win = { on(_, fn) { handler = fn; }, isDestroyed() { return destroyed; },
     webContents: { isDestroyed: () => false, executeJavaScript: async () => 1,
       send() { requested = true; } }, close() { destroyed = true; } };
-  vm.runInNewContext(source.slice(start, end), { mainWindow: win, saveWindowState() {},
+  vm.runInNewContext(source.slice(start, end), { mainWindow: win, saveWindowState() {}, flushRendererStorage() {},
     isQuitting: false, activeDownloadCount: 0, Number, console: silent });
   const pending = handler({ preventDefault() { prevented = true; } });
   assert.equal(prevented, true); await pending;
@@ -358,7 +358,7 @@ test("normal app close requests authenticated shutdown and waits for the actual 
   let handler; let quitCount = 0; let requestOptions; let ended = false;
   const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null, killed: true,
     kill() { assert.fail("Backend should be allowed to persist before termination"); } });
-  vm.runInNewContext(source.slice(start, end), { app: { on(_, fn) { handler = fn; }, quit() { quitCount++; } },
+  vm.runInNewContext(source.slice(start, end), { app: { on(_, fn) { handler = fn; }, quit() { quitCount++; } }, flushRendererStorage() {},
     powerSaveBlockerId: null, serverProcess: child, serverPort: 9875, serverToken: "secret", isQuitting: true,
     setTimeout() { return {}; }, clearTimeout() {}, console: silent,
     require() { return { request(options) { requestOptions = options;

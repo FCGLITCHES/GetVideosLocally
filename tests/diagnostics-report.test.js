@@ -182,3 +182,30 @@ test("cookie health summary reports login expiry without cookie details", () => 
   assert.equal(expired.expiresAt, now - 3 * day);
   assert.equal(JSON.stringify(expired).includes("SID"), false);
 });
+
+test("ffmpeg trust-manifest blocks are dropped once that version is installed", () => {
+  const { detectIssues } = require("../backend/services/diagnostics-report");
+  const now = Date.UTC(2026, 10, 18, 22, 44);
+  const blocked = (version) => ({
+    time: now - 3600000,
+    timestamp: new Date(now - 3600000).toISOString(),
+    level: "ERROR",
+    message: `❌ FFmpeg download/install failed: Version ${version} is not in the trust manifest - update the app first`,
+  });
+  const data = (ffmpegVersion, entries) => ({
+    failedJobs: [], entries, recentErrors: [], now, renderer: null, autoUpdate: {},
+    tools: {
+      ytdlp: { exists: true, runs: true, binWritable: true },
+      ffmpeg: { exists: true, runs: true, version: ffmpegVersion },
+      ffprobe: { exists: true },
+      node: { exists: true, runs: true },
+    },
+    cookies: { exists: true, validHeader: true, youtubeAuth: {} },
+    storage: {}, network: [],
+  });
+  const ids = (d) => detectIssues(d).map((issue) => issue.id);
+
+  const installed = "ffmpeg version 9.0.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026";
+  assert.ok(!ids(data(installed, [blocked("9.0.2")])).includes("ffmpeg-update-blocked"));
+  assert.ok(ids(data(installed, [blocked("9.1.0")])).includes("ffmpeg-update-blocked"));
+});

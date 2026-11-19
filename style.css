@@ -6502,6 +6502,10 @@ body {
     gap: 0.65rem;
 }
 
+.setup-remember-choices {
+    margin-top: 0.8rem;
+}
+
 .setup-toggle-row {
     display: flex;
     align-items: center;

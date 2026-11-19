@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return await ipcRenderer.invoke("writeClipboardText", text);
   },
   getPath: (name) => ipcRenderer.invoke("getPath", name),
+  flushStorageData: () => ipcRenderer.invoke("flush-storage-data"),
   getUserDataPath: async () => {
     return await ipcRenderer.invoke("get-userdata-path");
   },

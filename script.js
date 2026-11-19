@@ -46,6 +46,23 @@ function getPersistedDownloadFolder() {
     return normalizeDownloadFolderPath(localStorage.getItem('downloadFolder'));
 }
 
+// Settings live in localStorage, which Chromium writes to disk lazily. Ask the
+// desktop shell to flush shortly after any change so a crash, a forced close
+// during an update or a Windows shutdown cannot roll preferences back.
+let settingsFlushTimer = null;
+function flushSettingsToDisk() {
+    if (!window.electronAPI || typeof window.electronAPI.flushStorageData !== 'function') return;
+    clearTimeout(settingsFlushTimer);
+    settingsFlushTimer = setTimeout(() => {
+        window.electronAPI.flushStorageData().catch(() => {});
+    }, 250);
+}
+
+function saveUserSettingsToStorage(settings = userSettings) {
+    localStorage.setItem('ytdUserSettings', JSON.stringify(settings));
+    flushSettingsToDisk();
+}
+
 function persistDownloadFolderPath(folderPath) {
     const normalizedFolderPath = normalizeDownloadFolderPath(folderPath);
     userSettings = {
@@ -53,7 +70,7 @@ function persistDownloadFolderPath(folderPath) {
         downloadFolder: normalizedFolderPath
     };
 
-    localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+    saveUserSettingsToStorage();
     if (normalizedFolderPath) {
         localStorage.setItem('downloadFolder', normalizedFolderPath);
     } else {
@@ -245,6 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const maxSpeedInput = document.getElementById('maxSpeed');
     const numerateFilesCheckbox = document.getElementById('numerateFiles');
     const skipDuplicatesCheckbox = document.getElementById('skipDuplicates');
+    const rememberDownloadChoicesCheckbox = document.getElementById('rememberDownloadChoices');
     const removeCompletedCheckbox = document.getElementById('removeCompleted');
     const notificationSoundCheckbox = document.getElementById('notificationSound');
     const notificationPopupCheckbox = document.getElementById('notificationPopup');
@@ -2399,7 +2417,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 userSettings.usageStats = false;
                 userSettings.errorTelemetry = false;
-                localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+                saveUserSettingsToStorage();
                 const usageStatsCheckbox = document.getElementById('usageStats');
                 if (usageStatsCheckbox) usageStatsCheckbox.checked = false;
             }
@@ -2673,17 +2691,69 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Remember the last Format, Quality and Concurrent downloads the user picked.
+    // These pickers live on the main form, so every change is saved straight away
+    // and restored on the next launch (or after any reload of the window).
+    // With "Remember my last choices" off, changes are not saved and the pickers
+    // start from the same saved choices (from setup) every time.
+    function shouldRememberDownloadChoices() {
+        return userSettings?.rememberDownloadChoices !== false;
+    }
+
+    function persistDownloadPreferences(patch) {
+        if (!shouldRememberDownloadChoices()) return;
+        userSettings = { ...(userSettings || {}), ...patch };
+        window.userSettings = userSettings;
+        try {
+            saveUserSettingsToStorage();
+        } catch (error) {
+            console.warn('Unable to save download preferences:', error);
+        }
+    }
+
+    function selectHasValue(selectElement, value) {
+        return Boolean(selectElement) && value !== undefined && value !== null &&
+            Array.from(selectElement.options).some(option => option.value === String(value));
+    }
+
     if (formatSelect && qualitySelect) {
-        formatSelect.addEventListener('change', () => populateQualityOptions(qualitySelect, formatSelect.value, 'youtube', true));
+        formatSelect.addEventListener('change', () => {
+            populateQualityOptions(qualitySelect, formatSelect.value, 'youtube', true);
+            persistDownloadPreferences({
+                defaultFormat: formatSelect.value,
+                defaultQuality: qualitySelect.value
+            });
+        });
+        qualitySelect.addEventListener('change', () => {
+            persistDownloadPreferences({ defaultQuality: qualitySelect.value });
+        });
         const savedFormat = userSettings.defaultFormat || formatSelect.value;
-        if (Array.from(formatSelect.options).some(option => option.value === savedFormat)) {
+        if (selectHasValue(formatSelect, savedFormat)) {
             formatSelect.value = savedFormat;
         }
         populateQualityOptions(qualitySelect, formatSelect.value, 'youtube');
         const savedQuality = userSettings.defaultQuality || 'highest';
-        if (Array.from(qualitySelect.options).some(option => option.value === savedQuality)) {
+        if (selectHasValue(qualitySelect, savedQuality)) {
             qualitySelect.value = savedQuality;
         }
+    }
+
+    const singleConcurrencyPicker = document.getElementById('singleConcurrencySelect');
+    if (singleConcurrencyPicker) {
+        if (selectHasValue(singleConcurrencyPicker, userSettings.defaultConcurrency)) {
+            singleConcurrencyPicker.value = String(userSettings.defaultConcurrency);
+        }
+        singleConcurrencyPicker.addEventListener('change', () => {
+            persistDownloadPreferences({ defaultConcurrency: singleConcurrencyPicker.value });
+        });
+    }
+    if (playlistConcurrencySelect) {
+        if (selectHasValue(playlistConcurrencySelect, userSettings.playlistConcurrency)) {
+            playlistConcurrencySelect.value = String(userSettings.playlistConcurrency);
+        }
+        playlistConcurrencySelect.addEventListener('change', () => {
+            persistDownloadPreferences({ playlistConcurrency: playlistConcurrencySelect.value });
+        });
     }
     function detectPlaylist() {
         if (!youtubeUrlInput || !playlistOptionsDiv) return;
@@ -2849,6 +2919,9 @@ document.addEventListener('DOMContentLoaded', () => {
             downloadFolder: '',
             defaultFormat: 'mp4',
             defaultQuality: 'highest',
+            defaultConcurrency: '1',
+            playlistConcurrency: '3',
+            rememberDownloadChoices: true,
             skipDeleteConfirmation: false,
             themePreset: 'light',
             keepPcAwake: true,
@@ -2892,6 +2965,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const oldStartWithWindows = userSettings.startWithWindows;
 
         userSettings = {
+            // Keep every saved preference this form does not own (main-form pickers, etc.).
+            ...userSettings,
             maxSpeed: maxSpeedInput ? (parseInt(maxSpeedInput.value, 10) || 0) : 0,
             numerateFiles: numerateFilesCheckbox ? numerateFilesCheckbox.checked : false,
             skipDuplicates: skipDuplicatesCheckbox ? skipDuplicatesCheckbox.checked : false,
@@ -2902,6 +2977,7 @@ document.addEventListener('DOMContentLoaded', () => {
             downloadFolder: downloadFolderInput ? downloadFolderInput.value : '',
             defaultFormat: userSettings.defaultFormat || 'mp4',
             defaultQuality: userSettings.defaultQuality || 'highest',
+            rememberDownloadChoices: rememberDownloadChoicesCheckbox ? rememberDownloadChoicesCheckbox.checked : userSettings.rememberDownloadChoices !== false,
             skipDeleteConfirmation: skipDeleteConfirmationCheckbox ? skipDeleteConfirmationCheckbox.checked : false,
             themePreset: themePresetSelect ? themePresetSelect.value : 'light',
             keepPcAwake: keepPcAwakeCheckbox ? keepPcAwakeCheckbox.checked : true,
@@ -3036,6 +3112,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (maxSpeedInput) maxSpeedInput.value = userSettings.maxSpeed;
         if (numerateFilesCheckbox) numerateFilesCheckbox.checked = userSettings.numerateFiles;
         if (skipDuplicatesCheckbox) skipDuplicatesCheckbox.checked = userSettings.skipDuplicates;
+        if (rememberDownloadChoicesCheckbox) rememberDownloadChoicesCheckbox.checked = userSettings.rememberDownloadChoices !== false;
         if (removeCompletedCheckbox) removeCompletedCheckbox.checked = userSettings.removeCompleted;
         if (notificationSoundCheckbox) notificationSoundCheckbox.checked = userSettings.notificationSound;
         if (notificationPopupCheckbox) notificationPopupCheckbox.checked = userSettings.notificationPopup;
@@ -3069,7 +3146,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Sync settings with actual system state
                             if (userSettings.startWithWindows !== result.enabled) {
                                 userSettings.startWithWindows = result.enabled;
-                                localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+                                saveUserSettingsToStorage();
                             }
                         }
                     })
@@ -3089,7 +3166,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (result && result.exists !== undefined) {
                             lanAccessCheckbox.checked = result.exists;
                             userSettings.lanAccess = result.exists;
-                            localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+                            saveUserSettingsToStorage();
                             window.userSettings = userSettings;
                         }
                     })
@@ -3109,7 +3186,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (result && result.success) {
                         userSettings.lanAccess = enable;
-                        localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+                        saveUserSettingsToStorage();
                         window.userSettings = userSettings;
                     } else {
                         lanAccessCheckbox.checked = !enable;
@@ -3716,7 +3793,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (supportModalNeverBtn) {
             supportModalNeverBtn.addEventListener('click', () => {
                 userSettings.supportPopupDisabled = true;
-                localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+                saveUserSettingsToStorage();
                 window.userSettings = userSettings;
                 closeSupportPopup();
             });
@@ -4095,7 +4172,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const speed = sliderToSpeed(sliderVal);
             if (maxSpeedInput) maxSpeedInput.value = speed;
             userSettings.maxSpeed = speed;
-            localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+            saveUserSettingsToStorage();
             // Don't call saveSettings() here - it causes unnecessary logging
             // Settings are already saved to localStorage above
         });
@@ -4108,7 +4185,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const theme = e.target.value;
             if (themePresetSelect) themePresetSelect.value = theme;
             userSettings.themePreset = theme;
-            localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+            saveUserSettingsToStorage();
             applyTheme(theme);
             saveSettings();
         });
@@ -5673,7 +5750,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const scaleValue = clampNumber(parseFloat(e.target.value), UI_SCALE_MIN, UI_SCALE_MAX);
             e.target.value = scaleValue;
             userSettings.uiScale = scaleValue;
-            localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+            saveUserSettingsToStorage();
             uiScaleValue.textContent = formatUIScaleLabel(scaleValue);
         });
     }
@@ -5902,6 +5979,7 @@ function initOnboarding() {
         downloadFolder: getPersistedDownloadFolder(),
         format: userSettings?.defaultFormat || 'mp4',
         quality: userSettings?.defaultQuality || 'highest',
+        rememberChoices: userSettings?.rememberDownloadChoices !== false,
         notifications: {
             sound: userSettings?.notificationSound ?? true,
             desktop: userSettings?.notificationPopup ?? false
@@ -5941,7 +6019,7 @@ function initOnboarding() {
             ...(userSettings || loadSettings()),
             ...settingsPatch
         };
-        localStorage.setItem('ytdUserSettings', JSON.stringify(userSettings));
+        saveUserSettingsToStorage();
         window.userSettings = userSettings;
     }
 
@@ -6116,6 +6194,12 @@ function initOnboarding() {
                 <select id="onboardingQuality">
                     ${qualityOptions.map(([quality, label]) => `<option value="${quality}" ${selectedQuality === quality ? 'selected' : ''}>${label}</option>`).join('')}
                 </select>
+            </div>
+            <div class="setup-toggle-list setup-remember-choices">
+                <label class="setup-toggle-row">
+                    <span class="setup-toggle-copy"><i class="fas fa-clock-rotate-left"></i><span><strong>Remember my last choices</strong><small>Keep the format, quality and concurrent downloads you last used. When off, every launch starts with the choices above.</small></span></span>
+                    <span class="setup-switch"><input type="checkbox" id="onboardingRememberChoices" ${onboardingState.rememberChoices ? 'checked' : ''}><span></span></span>
+                </label>
             </div>`;
         const actions = `
             <button class="setup-btn setup-btn-outline" data-action="prev"><i class="fas fa-arrow-left"></i> Back</button>
@@ -6204,6 +6288,13 @@ function initOnboarding() {
     }
 
     function applyFormatChoice() {
+        const rememberToggle = document.getElementById('onboardingRememberChoices');
+        if (rememberToggle) {
+            onboardingState.rememberChoices = rememberToggle.checked;
+            const el = document.getElementById('rememberDownloadChoices');
+            if (el) el.checked = rememberToggle.checked;
+        }
+        persistOnboardingSettings({ rememberDownloadChoices: onboardingState.rememberChoices });
         const selected = document.querySelector('.onboarding-choice-card.selected');
         if (selected) {
             const format = selected.dataset.format;

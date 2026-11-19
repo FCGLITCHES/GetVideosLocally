@@ -22,7 +22,7 @@ const electronMainSource = fs.readFileSync(
 test("onboarding_settings_and_first_launch_share_one_download_location_persistence_path", () => {
   assert.match(
     rendererSource,
-    /function persistDownloadFolderPath\(folderPath\)[\s\S]*localStorage\.setItem\('ytdUserSettings'[\s\S]*localStorage\.setItem\('downloadFolder'/,
+    /function persistDownloadFolderPath\(folderPath\)[\s\S]*saveUserSettingsToStorage\(\)[\s\S]*localStorage\.setItem\('downloadFolder'/,
   );
   assert.match(
     rendererSource,
