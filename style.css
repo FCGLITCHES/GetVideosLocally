@@ -9298,3 +9298,240 @@ button.history-action-btn[class]:active:not(:disabled),
         flex: 1;
     }
 }
+
+/* =========================================================================
+   Settings rows: the label keeps a readable width at every window size.
+   The legacy `.speed-input-group { width: 100% !important }` made the speed
+   control swallow the whole row and squeeze its label to nothing.
+   ========================================================================= */
+#settingsModal .setting-row {
+    flex-wrap: wrap;
+    row-gap: 0.6rem;
+}
+
+#settingsModal .setting-row > label,
+#settingsModal .setting-row > .setting-row-copy {
+    flex: 1 1 14rem;
+}
+
+#settingsModal .setting-row > :not(label):not(.setting-row-copy) {
+    margin-left: auto;
+}
+
+#settingsModal .speed-input-group {
+    width: auto !important;
+    flex: 0 0 auto;
+}
+
+#settingsModal .speed-input-group input,
+#settingsModal .speed-input-group .input-field {
+    flex: 0 0 8.5rem !important;
+    width: 8.5rem;
+}
+
+/* =========================================================================
+   Header: "Restart to update" appears only when a new version is ready.
+   ========================================================================= */
+.app-update-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+    padding: 0.45rem 0.9rem;
+    border: 0;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #e11d2e;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.app-update-btn[hidden] {
+    display: none;
+}
+
+.app-update-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.22);
+}
+
+.app-update-btn:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+    .app-update-btn {
+        padding: 0.5rem;
+    }
+
+    .app-update-btn-text {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+    }
+}
+
+/* =========================================================================
+   Settings → About
+   ========================================================================= */
+#settingsModal .about-hero {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+#settingsModal .about-logo {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+#settingsModal .about-app-name {
+    margin: 0;
+    font-size: 1.15rem;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-color);
+}
+
+#settingsModal .about-version-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.2rem 0 0;
+    font-size: 0.9rem;
+    color: var(--st-muted-text);
+}
+
+#settingsModal .about-version-line strong {
+    color: var(--text-color);
+    font-variant-numeric: tabular-nums;
+}
+
+#settingsModal .about-edition-badge {
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+#settingsModal .about-edition-badge:empty {
+    display: none;
+}
+
+#settingsModal .about-update-progress {
+    height: 6px;
+    margin: 0.25rem 0 0.75rem;
+    border-radius: 999px;
+    background: var(--st-track);
+    overflow: hidden;
+}
+
+#settingsModal .about-update-progress[hidden] {
+    display: none;
+}
+
+#settingsModal .about-update-progress-fill {
+    width: 0;
+    height: 100%;
+    background: var(--primary-color);
+    transition: width 0.3s ease;
+}
+
+#settingsModal .about-details {
+    display: grid;
+    gap: 0;
+    margin: 0;
+}
+
+#settingsModal .about-details > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 0;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.85rem;
+}
+
+#settingsModal .about-details > div:first-child {
+    border-top: 0;
+}
+
+#settingsModal .about-details dt {
+    font-weight: 600;
+    color: var(--text-color);
+    flex-shrink: 0;
+}
+
+#settingsModal .about-details dd {
+    margin: 0;
+    min-width: 0;
+    color: var(--st-muted-text);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+#settingsModal .about-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+#settingsModal .about-links .action-btn {
+    text-decoration: none;
+}
+
+/* Large screens (1440p, 4K at 150%, ultrawide): use the space. The download
+   form keeps a comfortable width; the download list takes the rest. */
+@media (min-width: 1600px) {
+    .container {
+        max-width: min(2400px, 94vw);
+    }
+
+    .downloader-layout .card {
+        flex: 0 0 600px;
+        max-width: 640px;
+    }
+
+    .download-links-container {
+        flex: 1 1 auto;
+        max-height: calc(100vh - 13rem);
+    }
+
+    .history-layout {
+        max-width: min(2000px, 100%);
+    }
+
+    #historyPanel .history-list:not(#historyYoutubePlaylists) {
+        grid-template-columns: repeat(auto-fill, minmax(19.5rem, 1fr));
+    }
+}
+
+@media (min-width: 2400px) {
+    /* 1440p-class screens: keep the downloader to about two thirds of the
+       width. History has its own layout and limit below. */
+    main.container {
+        max-width: 1700px;
+    }
+
+    .downloader-layout .card {
+        flex-basis: 640px;
+        max-width: 680px;
+    }
+
+    .history-layout {
+        max-width: min(2100px, 100%);
+    }
+}

@@ -352,9 +352,9 @@ test("generic playlist entries retain their own downloadable URLs", async () => 
   assert.equal(result.items[0].id, "42"); assert.equal(result.items[0].url, "https://example.test/videos/42");
 });
 
-test("normal app close requests authenticated shutdown and waits for the actual backend exit", () => {
+test("normal app close requests authenticated shutdown and waits for the actual backend exit", async () => {
   const source = fs.readFileSync(path.join(root, "electron-main.js"), "utf8");
-  const start = source.indexOf("let quitCleanupStarted"); const end = source.indexOf("app.on('activate'", start);
+  const start = source.indexOf("function shutdownBackendServer"); const end = source.indexOf("app.on('activate'", start);
   let handler; let quitCount = 0; let requestOptions; let ended = false;
   const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null, killed: true,
     kill() { assert.fail("Backend should be allowed to persist before termination"); } });
@@ -366,5 +366,5 @@ test("normal app close requests authenticated shutdown and waits for the actual 
   handler({ preventDefault() {} });
   assert.equal(ended, true); assert.equal(quitCount, 0);
   assert.equal(requestOptions.headers["X-Server-Token"], "secret");
-  child.emit("exit", 0); assert.equal(quitCount, 1);
+  child.emit("exit", 0); await new Promise((resolve) => setImmediate(resolve)); assert.equal(quitCount, 1);
 });

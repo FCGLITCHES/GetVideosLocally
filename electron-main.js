@@ -751,6 +751,115 @@ ipcMain.handle('flush-storage-data', (event) => {
   return true;
 });
 
+// A copy of the user's preferences in AppData. The renderer's localStorage is
+// tied to the backend's port; if 9875 is taken and another port is used, the
+// renderer starts with empty storage and restores from this copy instead.
+const SETTINGS_BACKUP_KEYS = new Set([
+  'ytdUserSettings', 'downloadFolder', 'ytdTutorialCompleted', 'gvl_lastSeenVersion',
+]);
+function getSettingsBackupPath() {
+  return path.join(app.getPath('userData'), 'settings-backup.json');
+}
+ipcMain.on('settings-backup:read', (event) => {
+  try {
+    assertTrustedIpcSender(event);
+    const parsed = JSON.parse(fs.readFileSync(getSettingsBackupPath(), 'utf8'));
+    const snapshot = {};
+    for (const [key, value] of Object.entries(parsed || {})) {
+      if (SETTINGS_BACKUP_KEYS.has(key) && typeof value === 'string') snapshot[key] = value;
+    }
+    event.returnValue = snapshot;
+  } catch (_) {
+    event.returnValue = null;
+  }
+});
+ipcMain.handle('settings-backup:write', async (event, snapshot) => {
+  assertTrustedIpcSender(event);
+  const clean = {};
+  for (const [key, value] of Object.entries(snapshot || {})) {
+    if (SETTINGS_BACKUP_KEYS.has(key) && typeof value === 'string' && value.length < 200000) clean[key] = value;
+  }
+  const target = getSettingsBackupPath();
+  const temp = `${target}.tmp`;
+  await fs.promises.writeFile(temp, JSON.stringify(clean), 'utf8');
+  await fs.promises.rename(temp, target);
+  return true;
+});
+
+// ===== App updates and About info =====
+const { createAppUpdater } = require('./backend/services/app-updater');
+// package.json ships inside the app, so this is right even when Electron is
+// started from another folder (where app.getVersion() reports Electron's).
+const APP_VERSION = require('./package.json').version;
+const appCanSelfUpdate = app.isPackaged &&
+  fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'));
+const appUpdater = createAppUpdater({
+  currentVersion: APP_VERSION,
+  canSelfUpdate: appCanSelfUpdate,
+  getAutoUpdater: () => require('electron-updater').autoUpdater,
+  getActiveDownloadCount: () => activeDownloadCount,
+  // Save settings and stop the backend before the installer starts, so it
+  // never has to force-close a running download server.
+  prepareForInstall: async () => {
+    isQuitting = true;
+    flushRendererStorage();
+    await shutdownBackendServer();
+  },
+  onStatus: (state) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app-update-status', state);
+  },
+});
+ipcMain.handle('app-update:check', (event) => {
+  assertTrustedIpcSender(event);
+  return appUpdater.check();
+});
+ipcMain.handle('app-update:state', (event) => {
+  assertTrustedIpcSender(event);
+  return appUpdater.getState();
+});
+ipcMain.handle('app-update:install', (event) => {
+  assertTrustedIpcSender(event);
+  return appUpdater.install();
+});
+ipcMain.handle('app-info', (event) => {
+  assertTrustedIpcSender(event);
+  return {
+    version: APP_VERSION,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    edition: !app.isPackaged ? 'Development' : (appCanSelfUpdate ? 'Installed' : 'Portable'),
+    userDataPath: app.getPath('userData'),
+  };
+});
+
+// Ask the backend to save its state and exit; resolves once it is gone.
+function shutdownBackendServer() {
+  const exitingProcess = serverProcess;
+  if (!exitingProcess || exitingProcess.exitCode !== null || exitingProcess.signalCode !== null) {
+    serverProcess = null;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    // Windows kill('SIGTERM') terminates immediately. Ask the authenticated
+    // backend to persist its state, then wait for the actual exit event.
+    const timeout = setTimeout(() => {
+      if (exitingProcess.exitCode === null && exitingProcess.signalCode === null) exitingProcess.kill();
+    }, 12000);
+    exitingProcess.once('exit', () => {
+      clearTimeout(timeout);
+      if (serverProcess === exitingProcess) serverProcess = null;
+      resolve();
+    });
+    const request = require('http').request({
+      hostname: '127.0.0.1', port: serverPort, path: '/shutdown', method: 'POST',
+      headers: { 'X-Server-Token': serverToken || '' }, timeout: 5000,
+    }, response => response.resume());
+    request.on('error', error => console.warn('Backend shutdown request failed:', error.message));
+    request.on('timeout', () => request.destroy());
+    request.end();
+  });
+}
+
 let quitCleanupStarted = false;
 app.on('before-quit', (event) => {
   flushRendererStorage();
@@ -762,28 +871,7 @@ app.on('before-quit', (event) => {
     powerSaveBlocker.stop(powerSaveBlockerId);
     powerSaveBlockerId = null;
   }
-  const exitingProcess = serverProcess;
-  if (!exitingProcess || exitingProcess.exitCode !== null || exitingProcess.signalCode !== null) {
-    app.quit();
-    return;
-  }
-  // Windows kill('SIGTERM') terminates immediately. Ask the authenticated
-  // backend to persist its state, then wait for the actual exit event.
-  const timeout = setTimeout(() => {
-    if (exitingProcess.exitCode === null && exitingProcess.signalCode === null) exitingProcess.kill();
-  }, 12000);
-  exitingProcess.once('exit', () => {
-    clearTimeout(timeout);
-    serverProcess = null;
-    app.quit();
-  });
-  const request = require('http').request({
-    hostname: '127.0.0.1', port: serverPort, path: '/shutdown', method: 'POST',
-    headers: { 'X-Server-Token': serverToken || '' }, timeout: 5000,
-  }, response => response.resume());
-  request.on('error', error => console.warn('Backend shutdown request failed:', error.message));
-  request.on('timeout', () => request.destroy());
-  request.end();
+  shutdownBackendServer().then(() => app.quit());
 });
 
 app.on('activate', () => {

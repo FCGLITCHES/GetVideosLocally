@@ -1442,8 +1442,22 @@ const env = loadEnv(process.env);
     return fs.existsSync(packaged) ? packaged : devOrAsar;
   };
 
-  app.get("/", (req, res) => res.sendFile(rootFile("index.html")));
-  app.get("/index.html", (req, res) => res.sendFile(rootFile("index.html")));
+  // Stamp the real app version into the page so About and What's new always
+  // match the build that is running.
+  const sendIndexHtml = (req, res, next) => {
+    fs.promises
+      .readFile(rootFile("index.html"), "utf8")
+      .then((html) => {
+        const version = String(readAppVersion() || "").replace(/[^0-9A-Za-z.+-]/g, "");
+        const stamped = version
+          ? html.replace(/data-app-version="[^"]*"/, `data-app-version="${version}"`)
+          : html;
+        res.type("html").send(stamped);
+      })
+      .catch(next);
+  };
+  app.get("/", sendIndexHtml);
+  app.get("/index.html", sendIndexHtml);
   app.get("/script.js", (req, res) => res.sendFile(rootFile("script.js")));
 
   // IMPORTANT: pick ONE that matches your real file (recommended: styles.css if that's what you have)

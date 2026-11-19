@@ -8,7 +8,7 @@ const builderConfig = require("../electron-builder.json");
 const packageManifest = require("../package.json");
 const packageLock = require("../package-lock.json");
 
-test("package versions agree and the 3.2.7 UI changelog stays aligned", () => {
+test("package versions agree and the in-app changelog matches the release", () => {
   const indexHtml = fs.readFileSync(
     path.join(projectRoot, "index.html"),
     "utf8",
@@ -18,14 +18,19 @@ test("package versions agree and the 3.2.7 UI changelog stays aligned", () => {
     "utf8",
   );
 
-  // Patch releases bump the package only; the in-app changelog stays at 3.2.7.
   assert.match(packageManifest.version, /^3\.2\.\d+$/);
   assert.equal(packageLock.version, packageManifest.version);
   assert.equal(packageLock.packages[""].version, packageManifest.version);
-  assert.match(indexHtml, /data-app-version="3\.2\.7"/);
-  assert.match(rendererScript, /DEFAULT_APP_VERSION = '3\.2\.7'/);
-  assert.match(rendererScript, /One Cookie File/);
-  assert.match(rendererScript, /Clearer Session Errors/);
+  const version = packageManifest.version;
+  // The server stamps the live version; the static copies are fallbacks that
+  // must still match the release, as must the What's new notes.
+  assert.ok(indexHtml.includes(`data-app-version="${version}"`));
+  assert.ok(rendererScript.includes(`DEFAULT_APP_VERSION = '${version}'`));
+  const changelogSource = rendererScript.slice(
+    rendererScript.indexOf("const FALLBACK_APP_CHANGELOG"),
+    rendererScript.indexOf("let updatePopupTimer"),
+  );
+  assert.ok(changelogSource.includes(`version: '${version}'`));
   const updatePopupSource = rendererScript.slice(
     rendererScript.indexOf("function showUpdatePopup"),
     rendererScript.indexOf("function dismissUpdate"),

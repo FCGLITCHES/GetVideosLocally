@@ -21,6 +21,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   getPath: (name) => ipcRenderer.invoke("getPath", name),
   flushStorageData: () => ipcRenderer.invoke("flush-storage-data"),
+  readSettingsBackup: () => ipcRenderer.sendSync("settings-backup:read"),
+  writeSettingsBackup: (snapshot) => ipcRenderer.invoke("settings-backup:write", snapshot),
+  getAppInfo: () => ipcRenderer.invoke("app-info"),
+  checkForAppUpdate: () => ipcRenderer.invoke("app-update:check"),
+  getAppUpdateState: () => ipcRenderer.invoke("app-update:state"),
+  installAppUpdate: () => ipcRenderer.invoke("app-update:install"),
+  onAppUpdateStatus: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on("app-update-status", listener);
+    return () => ipcRenderer.removeListener("app-update-status", listener);
+  },
   getUserDataPath: async () => {
     return await ipcRenderer.invoke("get-userdata-path");
   },

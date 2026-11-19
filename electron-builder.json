@@ -39,6 +39,14 @@
     "node_modules/winreg/**",
     "node_modules/untildify/**"
   ],
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "FCGLITCHES",
+      "repo": "GetVideosLocally",
+      "releaseType": "release"
+    }
+  ],
   "afterPack": "scripts/brand-packaged-windows-executable.js",
   "win": {
     "target": [
@@ -51,6 +59,7 @@
     "signAndEditExecutable": false
   },
   "nsis": {
+    "artifactName": "GetVideosLocally.Setup.${version}.${ext}",
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,

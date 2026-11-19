@@ -1,5 +1,24 @@
 // script.js - Frontend logic for GetVideosLocally
 
+// Saved preferences are mirrored to a file in AppData. If this window starts
+// with empty storage (for example the app had to use a different local port),
+// put them back before anything reads them.
+const SETTINGS_BACKUP_KEYS = ['ytdUserSettings', 'downloadFolder', 'ytdTutorialCompleted', 'gvl_lastSeenVersion'];
+(function restoreSettingsBackup() {
+    try {
+        if (localStorage.getItem('ytdUserSettings') !== null) return;
+        const snapshot = window.electronAPI?.readSettingsBackup?.();
+        if (!snapshot || typeof snapshot !== 'object') return;
+        for (const key of SETTINGS_BACKUP_KEYS) {
+            if (typeof snapshot[key] === 'string' && localStorage.getItem(key) === null) {
+                localStorage.setItem(key, snapshot[key]);
+            }
+        }
+    } catch (error) {
+        console.warn('Unable to restore saved settings backup:', error);
+    }
+})();
+
 // Move these to global scope (before DOMContentLoaded)
 let ws;
 let clientId = localStorage.getItem('ytdClientId');
@@ -55,6 +74,14 @@ function flushSettingsToDisk() {
     clearTimeout(settingsFlushTimer);
     settingsFlushTimer = setTimeout(() => {
         window.electronAPI.flushStorageData().catch(() => {});
+        if (typeof window.electronAPI.writeSettingsBackup === 'function') {
+            const snapshot = {};
+            for (const key of SETTINGS_BACKUP_KEYS) {
+                const value = localStorage.getItem(key);
+                if (value !== null) snapshot[key] = value;
+            }
+            window.electronAPI.writeSettingsBackup(snapshot).catch(() => {});
+        }
     }, 250);
 }
 
@@ -2927,6 +2954,7 @@ document.addEventListener('DOMContentLoaded', () => {
             keepPcAwake: true,
             uiScale: 1.0, // Add UI scale default
             autoUpdateTools: true, // Enable auto-updates by default
+            autoCheckUpdates: true, // Look for new app versions on launch and every few hours
             errorTelemetry: false, // Legacy key; mirrors usageStats (default: disabled for privacy)
             usageStats: false, // Opt-in anonymous usage statistics (default: disabled)
             startWithWindows: false, // Start app with Windows (default: disabled)
@@ -2983,6 +3011,9 @@ document.addEventListener('DOMContentLoaded', () => {
             keepPcAwake: keepPcAwakeCheckbox ? keepPcAwakeCheckbox.checked : true,
             uiScale: document.getElementById('uiScale') ? parseFloat(document.getElementById('uiScale').value) || 1.0 : 1.0,
             autoUpdateTools: autoUpdateToolsCheckbox ? autoUpdateToolsCheckbox.checked : true,
+            autoCheckUpdates: document.getElementById('autoCheckUpdates')
+                ? document.getElementById('autoCheckUpdates').checked
+                : userSettings.autoCheckUpdates !== false,
             errorTelemetry: newUsageStats,
             usageStats: newUsageStats,
             startWithWindows: newStartWithWindows,
@@ -3026,6 +3057,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 speedValue.textContent = kbps + ' KB/s';
             }
         }
+
+        scheduleAppUpdateChecks();
 
         // Handle Windows startup toggle if the setting changed
         if (newStartWithWindows !== oldStartWithWindows && window.electronAPI && window.electronAPI.toggleAutoLaunch) {
@@ -3118,6 +3151,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (notificationPopupCheckbox) notificationPopupCheckbox.checked = userSettings.notificationPopup;
         if (keepPcAwakeCheckbox) keepPcAwakeCheckbox.checked = userSettings.keepPcAwake;
         if (autoUpdateToolsCheckbox) autoUpdateToolsCheckbox.checked = userSettings.autoUpdateTools !== false; // Default to true
+        const autoCheckUpdatesCheckbox = document.getElementById('autoCheckUpdates');
+        if (autoCheckUpdatesCheckbox) autoCheckUpdatesCheckbox.checked = userSettings.autoCheckUpdates !== false;
+        void refreshAboutPanel();
         const usageStatsCheckbox = document.getElementById('usageStats');
         if (usageStatsCheckbox) usageStatsCheckbox.checked = userSettings.usageStats === true;
         void reconcileUsageStats();
@@ -3268,6 +3304,167 @@ document.addEventListener('DOMContentLoaded', () => {
             next.focus();
         });
     });
+
+    // --- About tab & in-app updates ---
+    const appUpdateBtn = document.getElementById('appUpdateBtn');
+    const checkAppUpdateBtn = document.getElementById('checkAppUpdateBtn');
+    const APP_UPDATE_FIRST_CHECK_MS = 15000;
+    const APP_UPDATE_INTERVAL_MS = 4 * 60 * 60 * 1000;
+    let appUpdateState = null;
+    let appUpdateTimer = null;
+    let appUpdateReadyAnnounced = null;
+
+    function formatUpdateCheckedTime(timestamp) {
+        if (!timestamp) return '';
+        const minutes = Math.round((Date.now() - timestamp) / 60000);
+        if (minutes < 1) return 'Checked just now';
+        if (minutes < 60) return `Checked ${minutes} min ago`;
+        return `Checked at ${new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    }
+
+    function describeAppUpdate(state) {
+        const latest = state.latestVersion ? `version ${state.latestVersion}` : 'a new version';
+        switch (state.status) {
+            case 'checking':
+                return { title: 'Checking for updates…', desc: 'This only takes a moment', button: 'Checking…', busy: true };
+            case 'up-to-date':
+                return { title: "You're up to date", desc: formatUpdateCheckedTime(state.lastChecked), button: 'Check now' };
+            case 'downloading':
+                return { title: `Getting ${latest}`, desc: `${state.progress || 0}% · You can keep using the app`, button: 'Downloading…', busy: true };
+            case 'ready':
+                return { title: `${latest.charAt(0).toUpperCase()}${latest.slice(1)} is ready`, desc: 'Restart to finish. Your settings and history stay the same.', button: 'Restart to update', action: true };
+            case 'available-manual':
+                return { title: `${latest.charAt(0).toUpperCase()}${latest.slice(1)} is available`, desc: 'This is the portable copy, so download the new version from the website.', button: 'Get update', action: true };
+            case 'error':
+                return { title: 'Check for updates', desc: state.error || "Couldn't check for updates. Try again later.", button: 'Try again' };
+            default:
+                return { title: 'Check for updates', desc: 'Not checked yet', button: 'Check now' };
+        }
+    }
+
+    function renderAppUpdateState(state) {
+        if (!state) return;
+        appUpdateState = state;
+        const view = describeAppUpdate(state);
+
+        if (appUpdateBtn) {
+            appUpdateBtn.hidden = !view.action;
+            const label = appUpdateBtn.querySelector('.app-update-btn-text');
+            if (label) label.textContent = view.button;
+            appUpdateBtn.title = view.action ? `${view.title}. ${view.desc}` : '';
+            appUpdateBtn.setAttribute('aria-label', view.action ? `${view.button}: ${view.title}` : view.button);
+        }
+
+        const title = document.getElementById('aboutUpdateTitle');
+        const desc = document.getElementById('aboutUpdateStatus');
+        if (title) title.textContent = view.title;
+        if (desc) desc.textContent = view.desc;
+        if (checkAppUpdateBtn) {
+            checkAppUpdateBtn.disabled = view.busy === true;
+            checkAppUpdateBtn.classList.toggle('primary', view.action === true);
+            checkAppUpdateBtn.classList.toggle('secondary', view.action !== true);
+            const label = checkAppUpdateBtn.querySelector('.check-app-update-label');
+            if (label) label.textContent = view.button;
+        }
+        const progress = document.getElementById('aboutUpdateProgress');
+        const progressFill = document.getElementById('aboutUpdateProgressFill');
+        if (progress) progress.hidden = state.status !== 'downloading';
+        if (progressFill) progressFill.style.width = `${Math.max(0, Math.min(100, state.progress || 0))}%`;
+
+        if (state.status === 'ready' && appUpdateReadyAnnounced !== state.latestVersion) {
+            appUpdateReadyAnnounced = state.latestVersion;
+            showNotification(`${view.title}. Click "Restart to update" at the top when you're ready.`, 'success');
+        }
+    }
+
+    async function checkForAppUpdate() {
+        if (!window.electronAPI?.checkForAppUpdate) return;
+        try {
+            renderAppUpdateState(await window.electronAPI.checkForAppUpdate());
+        } catch (error) {
+            console.warn('App update check failed:', error);
+        }
+    }
+
+    async function installAppUpdate() {
+        const state = appUpdateState;
+        if (state?.status === 'available-manual') {
+            window.open(state.downloadUrl || 'https://getvideoslocally.com/#download', '_blank', 'noopener');
+            return;
+        }
+        if (!window.electronAPI?.installAppUpdate) return;
+        const result = await window.electronAPI.installAppUpdate();
+        if (result?.ok) {
+            showNotification('Restarting to finish the update…', 'info');
+        } else if (result?.reason === 'downloads-active') {
+            showNotification('Downloads are still running. Restart to update once they finish, or the update will install the next time you close the app.', 'warning');
+        }
+    }
+
+    function scheduleAppUpdateChecks() {
+        if (userSettings.autoCheckUpdates === false) {
+            window.clearTimeout(appUpdateTimer);
+            appUpdateTimer = null;
+            return;
+        }
+        if (appUpdateTimer) return;
+        const run = () => {
+            void checkForAppUpdate();
+            appUpdateTimer = window.setTimeout(run, APP_UPDATE_INTERVAL_MS);
+        };
+        appUpdateTimer = window.setTimeout(run, APP_UPDATE_FIRST_CHECK_MS);
+    }
+
+    async function refreshAboutPanel() {
+        const setText = (id, value) => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = value || '—';
+        };
+        setText('aboutVersion', document.documentElement.dataset.appVersion);
+        try {
+            const info = await window.electronAPI?.getAppInfo?.();
+            if (info) {
+                setText('aboutVersion', info.version);
+                setText('aboutEdition', info.edition);
+                setText('aboutElectron', info.electron);
+                setText('aboutDataPath', info.userDataPath);
+                const dataPath = document.getElementById('aboutDataPath');
+                if (dataPath) dataPath.title = info.userDataPath || '';
+            }
+        } catch (error) {
+            console.warn('Could not read app info:', error);
+        }
+        try {
+            const response = await window.localApiAuth.authorizedFetch('/tools-status');
+            const tools = await response.json();
+            setText('aboutYtdlp', tools?.ytdlp?.version);
+            // FFmpeg reports a whole banner ("ffmpeg version 9.0.2-essentials_build-… Copyright …").
+            const ffmpegVersion = String(tools?.ffmpeg?.version || '')
+                .replace(/^ffmpeg version\s+/i, '')
+                .split(/\s/)[0]
+                .replace(/-(essentials|full)_build.*$/i, '');
+            setText('aboutFfmpeg', ffmpegVersion);
+        } catch (_) {
+            // Tools status is informational; leave the dashes.
+        }
+        try {
+            renderAppUpdateState(await window.electronAPI?.getAppUpdateState?.());
+        } catch (_) {
+            // Not running inside the desktop app.
+        }
+    }
+
+    appUpdateBtn?.addEventListener('click', () => void installAppUpdate());
+    checkAppUpdateBtn?.addEventListener('click', () => {
+        if (appUpdateState?.status === 'ready' || appUpdateState?.status === 'available-manual') {
+            void installAppUpdate();
+        } else {
+            void checkForAppUpdate();
+        }
+    });
+    window.electronAPI?.onAppUpdateStatus?.(renderAppUpdateState);
+    window.electronAPI?.getAppUpdateState?.().then(renderAppUpdateState).catch(() => {});
+    scheduleAppUpdateChecks();
 
     // Subtitle mode toggle: hide languages & auto-captions when set to "none"
     function updateSubtitleVisibility() {
@@ -3501,6 +3698,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (reportProblemModal && reportProblemForm) {
         document.getElementById('reportProblemBtn')?.addEventListener('click', () => openReportProblem());
+        document.getElementById('aboutReportProblemBtn')?.addEventListener('click', () => openReportProblem());
         document.getElementById('closeReportProblemBtn')?.addEventListener('click', closeReportProblem);
         cancelReportProblemBtn?.addEventListener('click', closeReportProblem);
         reportProblemModal.addEventListener('click', (event) => {
@@ -5763,19 +5961,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===== UPDATE CHECK & CHANGELOG SYSTEM =====
 const UPDATE_LAST_SEEN_KEY = 'gvl_lastSeenVersion';
 const UPDATE_POPUP_DELAY_MS = 2500;
-const DEFAULT_APP_VERSION = '3.2.7';
+// The server stamps the running version into <html data-app-version>; this is
+// only a fallback. Keep the changelog below in step with each release.
+const DEFAULT_APP_VERSION = '3.2.12';
 const FALLBACK_APP_CHANGELOG = {
-    version: DEFAULT_APP_VERSION,
-    title: "Cookie Session Hotfix v3.2.7",
-    date: 'September 2026',
+    version: '3.2.12',
+    title: "What's new in 3.2.12",
+    date: 'November 2026',
     required: false,
-    badge: 'Hotfix',
-    summary: 'Cookie imports and downloads now use one saved file. New guidance explains when a website rejects an expired or changed browser session.',
+    badge: '',
+    summary: '',
     items: [
-        { icon: 'fa-cookie-bite', title: 'One Cookie File', desc: 'Imports, playlist previews, metadata, and downloads use the same saved cookies.txt. Obsolete app-profile copies are consolidated.' },
-        { icon: 'fa-circle-info', title: 'Clearer Session Errors', desc: 'A saved file can still be rejected by the website. Session errors now explain that cookies may have expired or changed and offer Import Fresh Cookies.' },
-        { icon: 'fa-list-check', title: 'YouTube Export Steps', desc: 'The cookies helper includes private-window export instructions to reduce cookie rotation, and explains that the robots.txt page text is not the cookie file.' },
-        { icon: 'fa-file-circle-check', title: 'Safer Imports', desc: 'Malformed cookie files are rejected without replacing your saved import. Valid HttpOnly cookies are supported, and new imports are available immediately.' }
+        { icon: 'fa-arrows-rotate', title: 'One-click updates', desc: 'New versions download by themselves. When you see Restart to update, click it. Your settings and history stay as they are. You can also check any time in Settings → About.' },
+        { icon: 'fa-display', title: 'Looks right on big screens', desc: 'Downloads and History make better use of large monitors, and the Speed limit setting is no longer squashed.' },
+        { icon: 'fa-shield-halved', title: 'Settings kept safe', desc: 'The app keeps a backup copy of your settings, so they are not lost.' }
     ]
 };
 let updatePopupTimer = null;
@@ -5821,6 +6020,11 @@ function showLatestChangesPopup(options = {}) {
     }
 
     const changelog = getValidAppChangelog();
+    // Only announce notes written for this version; a patch without its own
+    // notes should not re-show the previous release's list.
+    if (!force && changelog.version !== version) {
+        return false;
+    }
     window.clearTimeout(updatePopupTimer);
 
     const openPopup = () => showUpdatePopup(changelog, version, UPDATE_LAST_SEEN_KEY);
@@ -5930,6 +6134,7 @@ function dismissUpdate(modal, storageKey, version) {
     modal.style.display = 'none';
     document.body.style.overflow = '';
     localStorage.setItem(storageKey, version);
+    flushSettingsToDisk();
 }
 
 // ===== SCROLL TO TOP BUTTON =====
@@ -6473,6 +6678,7 @@ function initOnboarding() {
         modal.style.display = 'none';
         document.body.style.overflow = '';
         localStorage.setItem('ytdTutorialCompleted', 'true');
+        flushSettingsToDisk();
         applyNotificationChoices();
     }
 
@@ -6607,6 +6813,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                         onboardingModal.style.display = 'none';
                         document.body.style.overflow = '';
                         localStorage.setItem('ytdTutorialCompleted', 'true');
+                        flushSettingsToDisk();
                     };
                     closeModal();
                 }

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-app-version="3.2.7">
+<html lang="en" data-app-version="3.2.12">
 
 <head>
     <meta charset="UTF-8">
@@ -60,6 +60,10 @@
                     <span class="stat-label">Downloaded</span>
                 </div>
             </div>
+            <button id="appUpdateBtn" class="app-update-btn" type="button" hidden>
+                <i class="fas fa-arrows-rotate" aria-hidden="true"></i>
+                <span class="app-update-btn-text">Restart to update</span>
+            </button>
             <button id="settingsBtn" class="settings-btn" aria-label="Open settings" title="Open settings">
                 <i class="fas fa-cog"></i>
             </button>
@@ -387,6 +391,11 @@
                         data-settings-tab="advanced">
                         <i class="fas fa-screwdriver-wrench" aria-hidden="true"></i><span>Advanced</span>
                     </button>
+                    <button class="settings-nav-item" type="button" role="tab" id="settingsTab-about"
+                        aria-controls="settingsPanel-about" aria-selected="false" tabindex="-1"
+                        data-settings-tab="about">
+                        <i class="fas fa-circle-info" aria-hidden="true"></i><span>About</span>
+                    </button>
                 </nav>
 
                 <div class="settings-panels">
@@ -669,6 +678,70 @@
                                 start downloading.</p>
                             <p id="setupHealthTimestamp" class="setup-health-timestamp"></p>
                             <div id="setupHealthList" class="setup-health-list"></div>
+                        </div>
+                    </section>
+
+                    <!-- About -->
+                    <section id="settingsPanel-about" class="settings-panel" role="tabpanel"
+                        aria-labelledby="settingsTab-about" data-settings-panel="about" hidden>
+                        <div class="settings-section about-hero">
+                            <img class="about-logo" src="./assets/Logo 1.png" alt="" width="56" height="56">
+                            <div class="about-hero-copy">
+                                <h3 class="about-app-name">GetVideosLocally</h3>
+                                <p class="about-version-line">Version <strong id="aboutVersion">—</strong>
+                                    <span id="aboutEdition" class="about-edition-badge"></span></p>
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>Updates</h3>
+                            <div class="setting-item setting-row">
+                                <span class="setting-row-copy"><span class="setting-label" id="aboutUpdateTitle">Check
+                                        for updates</span><span class="setting-desc" id="aboutUpdateStatus">Not checked
+                                        yet</span></span>
+                                <button id="checkAppUpdateBtn" class="action-btn secondary" type="button">
+                                    <i class="fas fa-arrows-rotate" aria-hidden="true"></i>
+                                    <span class="check-app-update-label">Check now</span>
+                                </button>
+                            </div>
+                            <div id="aboutUpdateProgress" class="about-update-progress" hidden>
+                                <div id="aboutUpdateProgressFill" class="about-update-progress-fill"></div>
+                            </div>
+                            <div class="setting-item checkbox-group">
+                                <label for="autoCheckUpdates"><span class="setting-label">Automatically check for
+                                        updates</span><span class="setting-desc">Look for a new version when the app
+                                        opens and every few hours</span></label>
+                                <input type="checkbox" id="autoCheckUpdates" name="autoCheckUpdates">
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>Details</h3>
+                            <dl class="about-details">
+                                <div><dt>yt-dlp</dt><dd id="aboutYtdlp">—</dd></div>
+                                <div><dt>FFmpeg</dt><dd id="aboutFfmpeg">—</dd></div>
+                                <div><dt>Electron</dt><dd id="aboutElectron">—</dd></div>
+                                <div><dt>Settings folder</dt><dd id="aboutDataPath" class="about-path">—</dd></div>
+                            </dl>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>Links</h3>
+                            <div class="about-links">
+                                <a class="action-btn secondary" href="https://getvideoslocally.com" target="_blank"
+                                    rel="noopener noreferrer"><i class="fas fa-globe" aria-hidden="true"></i> Website</a>
+                                <a class="action-btn secondary" href="https://getvideoslocally.com/blog/changelog"
+                                    target="_blank" rel="noopener noreferrer"><i class="fas fa-list-ul"
+                                        aria-hidden="true"></i> Changelog</a>
+                                <a class="action-btn secondary" href="https://github.com/FCGLITCHES/GetVideosLocally"
+                                    target="_blank" rel="noopener noreferrer"><i class="fab fa-github"
+                                        aria-hidden="true"></i> GitHub</a>
+                                <a class="action-btn secondary" href="https://getvideoslocally.com/privacy"
+                                    target="_blank" rel="noopener noreferrer"><i class="fas fa-user-shield"
+                                        aria-hidden="true"></i> Privacy</a>
+                                <button id="aboutReportProblemBtn" class="action-btn secondary" type="button"><i
+                                        class="fas fa-paper-plane" aria-hidden="true"></i> Report a problem</button>
+                            </div>
                         </div>
                     </section>
                 </div>

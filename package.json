@@ -1,6 +1,6 @@
 {
   "name": "getvideoslocally",
-  "version": "3.2.11",
+  "version": "3.2.12",
   "description": "GetVideosLocally - Desktop app for downloading and converting videos from 1000+ supported sites",
   "main": "electron-main.js",
   "scripts": {
@@ -16,7 +16,7 @@
     "prebuild:portable": "npm run tools:fetch",
     "build:portable": "node build-portable.js",
     "prebuild:installer": "npm run tools:fetch",
-    "build:installer": "electron-builder --win --x64 -c electron-builder.json",
+    "build:installer": "electron-builder --win --x64 -c electron-builder.json --publish never",
     "build:mac": "electron-builder --mac -c electron-builder.json",
     "build:linux": "electron-builder --linux -c electron-builder.json",
     "icon:generate": "node generate-icon.js",
@@ -43,6 +43,7 @@
     "concat-map": "^0.0.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "electron-updater": "^6.8.11",
     "express": "^4.19.2",
     "get-port": "^7.1.0",
     "glob": "^8.1.0",
@@ -52,13 +53,13 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@electron/packager": "^20.3.0",
     "cross-env": "^7.0.3",
     "electron": "44.9.3",
     "electron-builder": "^26.15.3",
     "rcedit": "^4.0.1",
     "sharp": "^0.35.5",
-    "trim-repeated": "^1.0.0",
-    "@electron/packager": "^20.3.0"
+    "trim-repeated": "^1.0.0"
   },
   "overrides": {
     "body-parser": "1.20.8",
