@@ -13,7 +13,9 @@
 [![Latest release](https://img.shields.io/github/v/release/FCGLITCHES/GetVideosLocally)](https://github.com/FCGLITCHES/GetVideosLocally/releases)
 [![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/FCGLITCHES/badge.svg)](https://hub.xerj.org/contributors/FCGLITCHES)
 
+[Website](https://getvideoslocally.com) •
 [Download](https://github.com/FCGLITCHES/GetVideosLocally/releases) •
+[Donate](https://donate.stripe.com/6oU00i73R6eh2yc0oU5AQ00) •
 [Report a bug](https://github.com/FCGLITCHES/GetVideosLocally/issues) •
 [Source](https://github.com/FCGLITCHES/GetVideosLocally)
 
@@ -197,7 +199,9 @@ For larger changes, opening an issue first is recommended so the approach can be
 
 GetVideosLocally is free and open source. The most useful ways to support the project are to report reproducible bugs, suggest improvements, contribute fixes, and share the project with people who may find it useful.
 
-Optional financial support is available through the project's [support link](https://donate.stripe.com/6oU00i73R6eh2yc0oU5AQ00).
+GetVideosLocally is made by one independent developer. It has no ads and no paid tier, so donations are what pay for the time that goes into it. If it has saved you a subscription, you can [donate here](https://donate.stripe.com/6oU00i73R6eh2yc0oU5AQ00).
+
+Guides, the changelog and the latest download are at [getvideoslocally.com](https://getvideoslocally.com).
 
 ## License
 
