@@ -119,4 +119,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getServerToken: async () => {
     return await ipcRenderer.invoke("get-server-token");
   },
+  // Tell the main process the resolved UI language (e.g. "de") so the tray
+  // menu and native dialogs follow it.
+  setUiLanguage: (code) => ipcRenderer.send("ui-language:set", String(code || "")),
 });

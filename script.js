@@ -46,6 +46,28 @@ function escapeHtml(rawValue) {
     return String(rawValue ?? '').replace(/[&<>"']/g, char => HTML_ESCAPE_MAP[char]);
 }
 
+// Server payloads carry the English text plus an optional translation key.
+// t() of an unknown English string returns it unchanged, so raw tool errors
+// (yt-dlp, ffmpeg) still show as they came.
+function serverText(data, fallback) {
+    if (data && data.messageKey) return t(data.messageKey, data.messageVars);
+    if (data && data.message) return t(data.message);
+    return fallback ?? '';
+}
+
+function serverError(data, fallback) {
+    if (data && data.errorKey) return t(data.errorKey, data.errorVars);
+    if (data && data.error) return t(String(data.error));
+    return fallback ?? '';
+}
+
+// Same for a 'reason' field (uiMessage(key, vars, 'reason') on the server).
+function serverReason(data, fallback) {
+    if (data && data.reasonKey) return t(data.reasonKey, data.reasonVars);
+    if (data && data.reason) return t(String(data.reason));
+    return fallback ?? '';
+}
+
 function normalizeDownloadFolderPath(folderPath) {
     return typeof folderPath === 'string' ? folderPath.trim() : '';
 }
@@ -121,6 +143,8 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('ytdClientId', clientId);
     }
     userSettings = loadSettings();
+    // Tell the desktop shell which language the window uses (tray menu, dialogs).
+    window.electronAPI?.setUiLanguage?.(t.lang);
     downloadItemsState = new Map(); // To store item details and manage them
     const downloadDismissals = window.createDownloadDismissals({
         storage: localStorage,
@@ -374,14 +398,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Visual state, short label and icon for the status pill under Download Now.
     const STATUS_PILL_STATES = {
-        success: { label: 'Ready', icon: 'fa-check' },
-        info: { label: 'Working', icon: 'fa-arrow-down' },
-        warning: { label: 'Heads up', icon: 'fa-triangle-exclamation' },
-        error: { label: 'Issue', icon: 'fa-exclamation' },
-        cancelled: { label: 'Cancelled', icon: 'fa-xmark', state: 'error' },
-        connecting: { label: 'Reconnecting', icon: 'fa-tower-broadcast' },
-        offline: { label: 'Offline', icon: 'fa-plug-circle-xmark', state: 'error' },
-        updating: { label: 'Updating', icon: 'fa-arrows-rotate', state: 'info' }
+        success: { label: t('Ready'), icon: 'fa-check' },
+        info: { label: t('Working'), icon: 'fa-arrow-down' },
+        warning: { label: t('Heads up'), icon: 'fa-triangle-exclamation' },
+        error: { label: t('Issue'), icon: 'fa-exclamation' },
+        cancelled: { label: t('Cancelled'), icon: 'fa-xmark', state: 'error' },
+        connecting: { label: t('Reconnecting'), icon: 'fa-tower-broadcast' },
+        offline: { label: t('Offline'), icon: 'fa-plug-circle-xmark', state: 'error' },
+        updating: { label: t('Updating'), icon: 'fa-arrows-rotate', state: 'info' }
     };
 
     // Messages sit on top of the connection state briefly, then the pill falls back to it.
@@ -392,38 +416,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // Mirrors the server's tool update gate: 'idle' | 'waiting' | 'installing'.
     let toolUpdateState = { phase: 'idle', tool: null, activeCount: 0, waitingCount: 0 };
 
-    function plural(count, one, many) {
-        return `${count} ${count === 1 ? one : many}`;
-    }
-
     function getToolUpdateStatus() {
         const { phase, tool, activeCount, waitingCount } = toolUpdateState;
-        const name = tool || 'tools';
+        const name = tool || t('tools');
         if (phase === 'waiting' && activeCount > 0) {
-            const queued = waitingCount > 0 ? `; ${plural(waitingCount, 'download waits', 'downloads wait')} for it` : '';
-            return {
-                message: `${name} update installs after ${plural(activeCount, 'download finishes', 'downloads finish')}${queued}`,
-                type: 'updating', label: 'Update waiting', wave: 'ready'
-            };
+            const installs = t.plural(activeCount, '{tool} update installs after {count} download finishes', '{tool} update installs after {count} downloads finish', { tool: name });
+            const message = waitingCount > 0
+                ? t('{update}; {queue}', {
+                    update: installs,
+                    queue: t.plural(waitingCount, '{count} download waits for it', '{count} downloads wait for it')
+                })
+                : installs;
+            return { message, type: 'updating', label: t('Update waiting'), wave: 'ready' };
         }
         if (phase === 'waiting' || phase === 'installing') {
-            return { message: `Installing ${name} update. Downloads resume right after`, type: 'updating', label: 'Updating', wave: 'ready' };
+            return { message: t('Installing {tool} update. Downloads resume right after', { tool: name }), type: 'updating', label: t('Updating'), wave: 'ready' };
         }
         return null;
     }
 
     function getConnectionStatus() {
         if (serverConnection === 'starting') {
-            return { message: 'Connecting to server', type: 'connecting', label: 'Starting up', wave: 'connecting' };
+            return { message: t('Connecting to server'), type: 'connecting', label: t('Starting up'), wave: 'connecting' };
         }
         if (serverConnection === 'reconnecting') {
-            return { message: 'Server disconnected', type: 'connecting', label: 'Reconnecting', wave: 'connecting' };
+            return { message: t('Server disconnected'), type: 'connecting', label: t('Reconnecting'), wave: 'connecting' };
         }
         if (navigator.onLine === false) {
-            return { message: "You're offline. Reconnect to download", type: 'offline', label: 'Offline', wave: 'offline' };
+            return { message: t("You're offline. Reconnect to download"), type: 'offline', label: t('Offline'), wave: 'offline' };
         }
         return getToolUpdateStatus() ||
-            { message: 'Connected to server', type: 'success', label: 'Ready', wave: 'ready', idle: true };
+            { message: t('Connected to server'), type: 'success', label: t('Ready'), wave: 'ready', idle: true };
     }
 
     function setToolUpdateState(next) {
@@ -494,8 +517,8 @@ document.addEventListener('DOMContentLoaded', () => {
             startYoutubeDownloadBtn.disabled = isOffline;
             startYoutubeDownloadBtn.setAttribute('aria-disabled', String(isOffline));
             startYoutubeDownloadBtn.title = isOffline
-                ? 'Reconnect to start downloads'
-                : 'Start download';
+                ? t('Reconnect to start downloads')
+                : t('Start download');
         }
 
         if (isOffline) {
@@ -504,7 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (shouldAnnounce) {
-            showStatus('Connection restored. Downloads are available again.', 'youtube', 'success', 'Back online');
+            showStatus(t('Connection restored. Downloads are available again.'), 'youtube', 'success', t('Back online'));
         }
     }
 
@@ -590,7 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showPotentialRateLimitNotice(message) {
-        const warningMessage = message || 'Potential rate limiting detected. The app is slowing requests to avoid restrictions. Wait a bit before retrying repeatedly.';
+        const warningMessage = message || t('Potential rate limiting detected. The app is slowing requests to avoid restrictions. Wait a bit before retrying repeatedly.');
         showStatus(warningMessage, 'youtube', 'warning');
 
         const now = Date.now();
@@ -599,7 +622,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         lastRateLimitNoticeAt = now;
-        showNotification('Potential rate limiting detected. Downloads may start more slowly for a short time.', 'warning');
+        showNotification(t('Potential rate limiting detected. Downloads may start more slowly for a short time.'), 'warning');
     }
 
     function openSettingsWithSection(sectionElement) {
@@ -627,35 +650,43 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===== LOGIN COOKIE HEALTH =====
     const cookiesStatusDesc = document.getElementById('cookiesStatusDesc');
     const COOKIE_WARNING_DISMISSED_KEY = 'gvl.cookieWarningDismissed';
-    const COOKIE_DEFAULT_DESC = 'Import cookies to download age-restricted or members-only videos';
+    const COOKIE_DEFAULT_DESC = t('Import cookies to download age-restricted or members-only videos');
     let cookieHealth = null;
     let cookieHealthCheckedAt = 0;
 
     function formatCookieDate(timestamp) {
-        return new Date(timestamp).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+        return t.formatDate(new Date(timestamp), { day: 'numeric', month: 'short', year: 'numeric' });
     }
 
-    function formatCookieCountdown(timestamp) {
+    // How long until the login runs out: 'soon' (within the hour), hours or days.
+    function getCookieCountdown(timestamp) {
         const hours = Math.round((timestamp - Date.now()) / 3600000);
-        if (hours <= 1) return 'within the hour';
-        if (hours < 36) return `in ${hours} hours`;
-        return `in ${Math.round(hours / 24)} days`;
+        if (hours <= 1) return { unit: 'soon', count: 0 };
+        if (hours < 36) return { unit: 'hours', count: hours };
+        return { unit: 'days', count: Math.round(hours / 24) };
     }
 
     function describeCookieHealth(health) {
         switch (health?.status) {
             case 'valid':
-                return { text: `Signed in to YouTube. Login lasts until ${formatCookieDate(health.expiresAt)}`, tone: 'ok' };
-            case 'expiring':
-                return { text: `YouTube login expires ${formatCookieCountdown(health.expiresAt)}. Import fresh cookies to keep signed-in downloads working`, tone: 'warn' };
+                return { text: t('Signed in to YouTube. Login lasts until {date}', { date: formatCookieDate(health.expiresAt) }), tone: 'ok' };
+            case 'expiring': {
+                const left = getCookieCountdown(health.expiresAt);
+                const text = left.unit === 'soon'
+                    ? t('YouTube login expires within the hour. Import fresh cookies to keep signed-in downloads working')
+                    : left.unit === 'hours'
+                        ? t.plural(left.count, 'YouTube login expires in {count} hour. Import fresh cookies to keep signed-in downloads working', 'YouTube login expires in {count} hours. Import fresh cookies to keep signed-in downloads working')
+                        : t.plural(left.count, 'YouTube login expires in {count} day. Import fresh cookies to keep signed-in downloads working', 'YouTube login expires in {count} days. Import fresh cookies to keep signed-in downloads working');
+                return { text, tone: 'warn' };
+            }
             case 'expired':
-                return { text: `YouTube login expired on ${formatCookieDate(health.expiresAt)}. Import fresh cookies`, tone: 'bad' };
+                return { text: t('YouTube login expired on {date}. Import fresh cookies', { date: formatCookieDate(health.expiresAt) }), tone: 'bad' };
             case 'session':
-                return { text: 'Imported a browser-session login, which YouTube ends when that browser closes. Import again if downloads ask you to sign in', tone: 'warn' };
+                return { text: t('Imported a browser-session login, which YouTube ends when that browser closes. Import again if downloads ask you to sign in'), tone: 'warn' };
             case 'no-login':
-                return { text: 'Cookies imported, but no YouTube sign-in was found in them. Export again while signed in', tone: 'warn' };
+                return { text: t('Cookies imported, but no YouTube sign-in was found in them. Export again while signed in'), tone: 'warn' };
             case 'invalid':
-                return { text: "The imported cookies file can't be read. Import it again", tone: 'bad' };
+                return { text: t("The imported cookies file can't be read. Import it again"), tone: 'bad' };
             default:
                 return { text: COOKIE_DEFAULT_DESC, tone: 'none' };
         }
@@ -671,18 +702,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showCookieExpiryHelp(health) {
         const expired = health.status === 'expired';
+        let title = t('Your YouTube login has expired.');
+        if (!expired) {
+            const left = getCookieCountdown(health.expiresAt);
+            title = left.unit === 'soon'
+                ? t('Your YouTube login expires within the hour.')
+                : left.unit === 'hours'
+                    ? t.plural(left.count, 'Your YouTube login expires in {count} hour.', 'Your YouTube login expires in {count} hours.')
+                    : t.plural(left.count, 'Your YouTube login expires in {count} day.', 'Your YouTube login expires in {count} days.');
+        }
         renderHelpPanel({
-            title: expired ? 'Your YouTube login has expired.' : `Your YouTube login expires ${formatCookieCountdown(health.expiresAt)}.`,
+            title,
             description: expired
-                ? 'Downloads that need a signed-in account (age-restricted, members-only, private) will fail until you import fresh cookies.'
-                : 'Import fresh cookies now so age-restricted and members-only downloads keep working.',
+                ? t('Downloads that need a signed-in account (age-restricted, members-only, private) will fail until you import fresh cookies.')
+                : t('Import fresh cookies now so age-restricted and members-only downloads keep working.'),
             steps: [
-                'Open YouTube in your browser and make sure you are signed in.',
-                'Export cookies with the helper and import them here.'
+                t('Open YouTube in your browser and make sure you are signed in.'),
+                t('Export cookies with the helper and import them here.')
             ],
-            actionLabel: 'Import fresh cookies',
+            actionLabel: t('Import fresh cookies'),
             action: () => openCookiesHelperFlow()
-        }, 'Sign-in cookies', 'cookies');
+        }, t('Sign-in cookies'), 'cookies');
     }
 
     async function refreshCookieHealth({ warn = false } = {}) {
@@ -704,7 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (importCookiesBtn) {
             const needsFresh = tone === 'warn' || tone === 'bad';
-            importCookiesBtn.innerHTML = `<i class="fas fa-cookie-bite"></i> ${needsFresh ? 'Import fresh' : 'Import'}`;
+            importCookiesBtn.innerHTML = `<i class="fas fa-cookie-bite"></i> ${escapeHtml(needsFresh ? t('Import fresh') : t('Import'))}`;
         }
 
         const needsWarning = cookieHealth.status === 'expiring' || cookieHealth.status === 'expired';
@@ -765,17 +805,17 @@ document.addEventListener('DOMContentLoaded', () => {
     async function openConfiguredDownloadFolder() {
         const folderPath = getDownloadFolder() || downloadFolderInput?.value || localStorage.getItem('downloadFolder') || '';
         if (!folderPath) {
-            showAlert('No download folder is configured yet.', 'Download Folder');
+            showAlert(t('No download folder is configured yet.'), t('Download Folder'));
             return;
         }
         if (window.electronAPI && window.electronAPI.openPathInExplorer) {
             const result = await window.electronAPI.openPathInExplorer(folderPath, folderPath);
             if (!result?.success) {
-                showAlert(`Unable to open this folder: ${result?.error || 'Unknown error'}`, 'Open Folder Failed');
+                showAlert(t('Unable to open this folder: {error}', { error: serverError(result, t('Unknown error')) }), t('Open Folder Failed'));
             }
             return;
         }
-        showAlert('Open folder is only available in the desktop app.', 'Not Available');
+        showAlert(t('Open folder is only available in the desktop app.'), t('Not Available'));
     }
 
     function hideFailureHelp({ dismissed = false } = {}) {
@@ -787,7 +827,7 @@ document.addEventListener('DOMContentLoaded', () => {
         failureHelpKind = null;
         setElementHiddenState(failureHelpPanel, true);
         if (failureHelpTitle) {
-            failureHelpTitle.textContent = 'We found a likely cause';
+            failureHelpTitle.textContent = t('We found a likely cause');
         }
         if (failureHelpDescription) {
             failureHelpDescription.textContent = '';
@@ -803,70 +843,73 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function buildFailureHelpConfig(errorMessage) {
+        // Unit tests load this function on its own, without the i18n runtime.
+        const tr = typeof t === 'function' ? t : (text, vars) => String(text).replace(/\{(\w+)\}/g, (match, name) => (vars && name in vars ? String(vars[name]) : match));
+        // Match the English error text; the panel content is what gets translated.
         const normalizedMessage = String(errorMessage || '').toLowerCase();
 
         const configs = [
             {
                 id: 'cookies_rejected',
                 pattern: /(saved cookie session was rejected|imported cookies appear to be expired|provided youtube account cookies are no longer valid|authentication failed despite cookies)/i,
-                title: 'Your saved cookie session was rejected.',
-                description: 'The cookie file was found and used, but the site still requested sign-in. The session may have expired, changed in your browser, or failed a site security check.',
+                title: tr('Your saved cookie session was rejected.'),
+                description: tr('The cookie file was found and used, but the site still requested sign-in. The session may have expired, changed in your browser, or failed a site security check.'),
                 steps: [
-                    'Export a new session from an account that can play the video.',
-                    'For YouTube, follow the private-window export steps in the cookies helper, then close that window.',
-                    'Import the new file and retry. Saving a file checks its format, not whether the site accepts it.'
+                    tr('Export a new session from an account that can play the video.'),
+                    tr('For YouTube, follow the private-window export steps in the cookies helper, then close that window.'),
+                    tr('Import the new file and retry. Saving a file checks its format, not whether the site accepts it.')
                 ],
-                actionLabel: 'Import Fresh Cookies',
+                actionLabel: tr('Import Fresh Cookies'),
                 action: () => openCookiesHelperFlow()
             },
             {
                 id: 'private_video',
                 pattern: /(private|members-only|subscriber-only|login required|sign in to confirm|age-restricted)/i,
-                title: 'This video likely needs account access.',
-                description: 'The source is rejecting anonymous access for this item.',
+                title: tr('This video likely needs account access.'),
+                description: tr('The source is rejecting anonymous access for this item.'),
                 steps: [
-                    'Make sure the account you use can actually view the video in the browser.',
-                    'Import fresh browser cookies if the site requires sign-in, age checks, or membership.',
-                    'Retry after importing cookies so yt-dlp can reuse that session.'
+                    tr('Make sure the account you use can actually view the video in the browser.'),
+                    tr('Import fresh browser cookies if the site requires sign-in, age checks, or membership.'),
+                    tr('Retry after importing cookies so yt-dlp can reuse that session.')
                 ],
-                actionLabel: 'Import Cookies',
+                actionLabel: tr('Import Cookies'),
                 action: () => openCookiesHelperFlow()
             },
             {
                 id: 'geo_block',
                 pattern: /(not available in your country|not available in your region|geo|region-locked|region blocked)/i,
-                title: 'This looks region-blocked.',
-                description: 'The site appears to be restricting playback in your current country or region.',
+                title: tr('This looks region-blocked.'),
+                description: tr('The site appears to be restricting playback in your current country or region.'),
                 steps: [
-                    'Verify that the video opens normally in your browser from the same machine.',
-                    'Use cookies from an account that is allowed to watch the video in that region.',
-                    'Retry only after the source itself is accessible; the app cannot bypass geo restrictions.'
+                    tr('Verify that the video opens normally in your browser from the same machine.'),
+                    tr('Use cookies from an account that is allowed to watch the video in that region.'),
+                    tr('Retry only after the source itself is accessible; the app cannot bypass geo restrictions.')
                 ]
             },
             {
                 id: 'rate_limit',
                 pattern: /(429|too many requests|rate limit|rate-limit|rate limited|try again later)/i,
-                title: 'The source is rate-limiting requests.',
-                description: 'You have likely hit a temporary request limit from the site.',
+                title: tr('The source is rate-limiting requests.'),
+                description: tr('You have likely hit a temporary request limit from the site.'),
                 steps: [
-                    'Wait a bit before retrying, especially after several quick attempts.',
-                    'Avoid re-fetching the same URL repeatedly in a short burst.',
-                    'If the source works better when logged in, import cookies before trying again.'
+                    tr('Wait a bit before retrying, especially after several quick attempts.'),
+                    tr('Avoid re-fetching the same URL repeatedly in a short burst.'),
+                    tr('If the source works better when logged in, import cookies before trying again.')
                 ],
-                actionLabel: 'Import Cookies',
+                actionLabel: tr('Import Cookies'),
                 action: () => openCookiesHelperFlow()
             },
             {
                 id: 'stream_protection',
                 pattern: /(stream protection|media stream was refused|unable to download video data: http error 403)/i,
-                title: 'YouTube refused the media stream.',
-                description: 'Your cookies were accepted, but YouTube blocked the video data itself. Re-importing cookies will not fix this.',
+                title: tr('YouTube refused the media stream.'),
+                description: tr('Your cookies were accepted, but YouTube blocked the video data itself. Re-importing cookies will not fix this.'),
                 steps: [
-                    'Update yt-dlp in Settings; YouTube changes its stream protection often.',
-                    'Wait a few minutes and retry the download.',
-                    'Pick an MP4 or MKV container so the app can fall back to the HLS stream.'
+                    tr('Update yt-dlp in Settings; YouTube changes its stream protection often.'),
+                    tr('Wait a few minutes and retry the download.'),
+                    tr('Pick an MP4 or MKV container so the app can fall back to the HLS stream.')
                 ],
-                actionLabel: 'Update Tools',
+                actionLabel: tr('Update Tools'),
                 action: () => {
                     openSettingsWithSection(setupHealthSection);
                     setSetupHealthSectionVisibility(true);
@@ -877,27 +920,27 @@ document.addEventListener('DOMContentLoaded', () => {
             {
                 id: 'cookies_required',
                 pattern: /(cookie|cookies|authentication required|forbidden|http error 403|403 forbidden)/i,
-                title: 'This download likely needs cookies.',
-                description: 'The source is probably asking for a logged-in browser session.',
+                title: tr('This download likely needs cookies.'),
+                description: tr('The source is probably asking for a logged-in browser session.'),
                 steps: [
-                    'Open the cookies helper and import fresh cookies from the browser that can play the video.',
-                    'Use cookies from the exact site account that has access to this media.',
-                    'Retry after importing to let yt-dlp authenticate with that session.'
+                    tr('Open the cookies helper and import fresh cookies from the browser that can play the video.'),
+                    tr('Use cookies from the exact site account that has access to this media.'),
+                    tr('Retry after importing to let yt-dlp authenticate with that session.')
                 ],
-                actionLabel: 'Import Cookies',
+                actionLabel: tr('Import Cookies'),
                 action: () => openCookiesHelperFlow()
             },
             {
                 id: 'site_unsupported',
                 pattern: /(unsupported url|unsupported site|no suitable extractor|unsupported webpage|extractorerror)/i,
-                title: 'This site or URL format may not be supported yet.',
-                description: 'yt-dlp may not recognize this page, or support may be outdated.',
+                title: tr('This site or URL format may not be supported yet.'),
+                description: tr('yt-dlp may not recognize this page, or support may be outdated.'),
                 steps: [
-                    'Double-check that the URL opens to a playable video page in your browser.',
-                    'Update yt-dlp and try again in case support was added recently.',
-                    'If it still fails, generate diagnostics so you can report the exact extractor error.'
+                    tr('Double-check that the URL opens to a playable video page in your browser.'),
+                    tr('Update yt-dlp and try again in case support was added recently.'),
+                    tr('If it still fails, generate diagnostics so you can report the exact extractor error.')
                 ],
-                actionLabel: 'Update Tools',
+                actionLabel: tr('Update Tools'),
                 action: () => {
                     openSettingsWithSection(setupHealthSection);
                     setSetupHealthSectionVisibility(true);
@@ -914,16 +957,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return {
             id: 'generic',
-            title: 'This looks like a common extractor or setup failure.',
-            description: 'The source returned an error, but the wording does not map to a single known category.',
+            title: tr('This looks like a common extractor or setup failure.'),
+            description: tr('The source returned an error, but the wording does not map to a single known category.'),
             steps: [
-                'Retry once in case the source returned a temporary response.',
-                'Run the setup health check to confirm yt-dlp, FFmpeg, cookies, and folder access look healthy.',
-                'If it keeps failing, report it with diagnostics attached so the exact error can be reviewed.'
+                tr('Retry once in case the source returned a temporary response.'),
+                tr('Run the setup health check to confirm yt-dlp, FFmpeg, cookies, and folder access look healthy.'),
+                tr('If it keeps failing, report it with diagnostics attached so the exact error can be reviewed.')
             ],
-            actionLabel: 'Report this problem',
+            actionLabel: tr('Report this problem'),
             action: () => {
-                openReportProblem({ message: `A download failed with: ${String(errorMessage).slice(0, 500)}\n\n` });
+                openReportProblem({ message: `${tr('A download failed with: {error}', { error: String(errorMessage).slice(0, 500) })}\n\n` });
             }
         };
     }
@@ -933,7 +976,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showFailureHelp(errorMessage) {
         if (!failureHelpPanel || !errorMessage) return;
-        renderHelpPanel(buildFailureHelpConfig(errorMessage), 'Why did this fail?', 'failure');
+        renderHelpPanel(buildFailureHelpConfig(errorMessage), t('Why did this fail?'), 'failure');
     }
 
     function renderHelpPanel(config, eyebrow, kind) {
@@ -957,7 +1000,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (failureHelpPrimaryBtn && config.actionLabel && typeof config.action === 'function') {
-            failureHelpPrimaryBtn.innerHTML = `<i class="fas fa-arrow-right"></i> ${config.actionLabel}`;
+            failureHelpPrimaryBtn.innerHTML = `<i class="fas fa-arrow-right"></i> ${escapeHtml(config.actionLabel)}`;
             failureHelpActionHandler = config.action;
             setElementHiddenState(failureHelpActions, false);
         } else {
@@ -969,16 +1012,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getHealthStateLabel(state) {
-        if (state === 'pass') return 'Ready';
-        if (state === 'warn') return 'Needs attention';
-        if (state === 'fail') return 'Blocked';
-        return 'Checking';
+        if (state === 'pass') return t('Ready');
+        if (state === 'warn') return t('Needs attention');
+        if (state === 'fail') return t('Blocked');
+        return t('Checking');
     }
 
     function formatHealthTimestamp(isoValue) {
         if (!isoValue) return '';
         try {
-            return new Date(isoValue).toLocaleString([], {
+            return t.formatDate(new Date(isoValue), {
                 dateStyle: 'medium',
                 timeStyle: 'short'
             });
@@ -991,7 +1034,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!setupHealthSummary || !setupHealthList || !setupHealthTimestamp) return;
         setupHealthSummary.textContent = result.summary;
         setupHealthTimestamp.textContent = result.checkedAt
-            ? `Last checked: ${formatHealthTimestamp(result.checkedAt)}`
+            ? t('Last checked: {time}', { time: formatHealthTimestamp(result.checkedAt) })
             : '';
         setupHealthList.innerHTML = '';
 
@@ -1026,16 +1069,16 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSetupHealthList(result);
     }
 
-    function renderSetupHealthLoading(message = 'Checking your local setup...') {
+    function renderSetupHealthLoading(message) {
         const loadingResult = {
-            summary: message,
+            summary: message === undefined ? t('Checking your local setup...') : message,
             checkedAt: '',
             items: [
-                { label: 'Network', state: 'checking', detail: 'Checking connection status...' },
-                { label: 'yt-dlp', state: 'checking', detail: 'Checking local yt-dlp installation...' },
-                { label: 'FFmpeg', state: 'checking', detail: 'Checking local FFmpeg installation...' },
-                { label: 'Cookies helper', state: 'checking', detail: 'Checking cookies helper availability...' },
-                { label: 'Download folder', state: 'checking', detail: 'Checking folder access and permissions...' }
+                { label: t('Network'), state: 'checking', detail: t('Checking connection status...') },
+                { label: 'yt-dlp', state: 'checking', detail: t('Checking local yt-dlp installation...') },
+                { label: 'FFmpeg', state: 'checking', detail: t('Checking local FFmpeg installation...') },
+                { label: t('Cookies helper'), state: 'checking', detail: t('Checking cookies helper availability...') },
+                { label: t('Download folder'), state: 'checking', detail: t('Checking folder access and permissions...') }
             ]
         };
         renderSetupHealthResult(loadingResult);
@@ -1072,7 +1115,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return {
             label,
             state: 'pass',
-            detail: `Detected ${versionText}`
+            detail: t('Detected {version}', { version: versionText })
         };
     }
 
@@ -1108,86 +1151,89 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const items = [];
         items.push({
-            label: 'Network',
+            label: t('Network'),
             state: isOnline ? 'pass' : 'fail',
             detail: isOnline
-                ? 'Internet connection looks available.'
-                : 'No internet connection detected. Fetching video info and downloads will stay disabled.'
+                ? t('Internet connection looks available.')
+                : t('No internet connection detected. Fetching video info and downloads will stay disabled.')
         });
 
         if (!toolsStatus) {
             items.push({
                 label: 'yt-dlp',
                 state: 'warn',
-                detail: 'Could not query the local tool service for yt-dlp.'
+                detail: t('Could not query the local tool service for yt-dlp.')
             });
             items.push({
                 label: 'FFmpeg',
                 state: 'warn',
-                detail: 'Could not query the local tool service for FFmpeg.'
+                detail: t('Could not query the local tool service for FFmpeg.')
             });
         } else {
-            items.push(getToolHealthItem('yt-dlp', toolsStatus.ytdlp, 'yt-dlp is missing or not responding.'));
-            items.push(getToolHealthItem('FFmpeg', toolsStatus.ffmpeg, 'FFmpeg is missing or not responding.'));
+            items.push(getToolHealthItem('yt-dlp', toolsStatus.ytdlp, t('yt-dlp is missing or not responding.')));
+            items.push(getToolHealthItem('FFmpeg', toolsStatus.ffmpeg, t('FFmpeg is missing or not responding.')));
         }
 
         if (!window.electronAPI || !window.electronAPI.openCookiesHelper) {
             items.push({
-                label: 'Cookies helper',
+                label: t('Cookies helper'),
                 state: 'fail',
-                detail: 'Cookies helper is unavailable in this environment.'
+                detail: t('Cookies helper is unavailable in this environment.')
             });
         } else if (cookiesData.hasCookies) {
             items.push({
-                label: 'Cookies helper',
+                label: t('Cookies helper'),
                 state: 'pass',
-                detail: 'Your cookies.txt is saved. A download is needed to check whether the site accepts this session.'
+                detail: t('Your cookies.txt is saved. A download is needed to check whether the site accepts this session.')
             });
         } else {
             items.push({
-                label: 'Cookies helper',
+                label: t('Cookies helper'),
                 state: 'warn',
-                detail: 'No personal cookies.txt imported yet. Import your own cookies only if a site requires sign-in, age checks, or account access.'
+                detail: t('No personal cookies.txt imported yet. Import your own cookies only if a site requires sign-in, age checks, or account access.')
             });
         }
 
         if (!folderPath) {
             items.push({
-                label: 'Download folder',
+                label: t('Download folder'),
                 state: 'fail',
-                detail: 'No download folder is configured yet.'
+                detail: t('No download folder is configured yet.')
             });
         } else if (!folderExists) {
             items.push({
-                label: 'Download folder',
+                label: t('Download folder'),
                 state: 'fail',
-                detail: 'The selected download folder does not exist.'
+                detail: t('The selected download folder does not exist.')
             });
         } else if (folderAccess?.success) {
             items.push({
-                label: 'Download folder',
+                label: t('Download folder'),
                 state: 'pass',
-                detail: 'Folder exists and is writable.'
+                detail: t('Folder exists and is writable.')
             });
         } else if (folderAccess?.error) {
             items.push({
-                label: 'Download folder',
+                label: t('Download folder'),
                 state: 'fail',
-                detail: `Folder access failed: ${folderAccess.error}`
+                detail: t('Folder access failed: {error}', { error: serverError(folderAccess) })
             });
         } else {
             items.push({
-                label: 'Download folder',
+                label: t('Download folder'),
                 state: 'warn',
-                detail: 'Folder exists, but write access could not be fully verified here.'
+                detail: t('Folder exists, but write access could not be fully verified here.')
             });
         }
 
         const blockingCount = items.filter((item) => item.state === 'fail').length;
         const warningCount = items.filter((item) => item.state === 'warn').length;
         const summary = blockingCount === 0 && warningCount === 0
-            ? 'Setup looks ready. yt-dlp, FFmpeg, cookies helper, folder access, and network all checked out.'
-            : `Setup check found ${blockingCount} blocking issue${blockingCount === 1 ? '' : 's'} and ${warningCount} warning${warningCount === 1 ? '' : 's'}.`;
+            ? t('Setup looks ready. yt-dlp, FFmpeg, cookies helper, folder access, and network all checked out.')
+            : t('Setup check found {issues} and {warnings}.', {
+                issues: t.plural(blockingCount, '{count} blocking issue', '{count} blocking issues'),
+                warnings: t.plural(warningCount, '{count} warning', '{count} warnings')
+            });
 
         const result = {
             summary,
@@ -1281,7 +1327,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const connectionIndicators = document.querySelectorAll('.connection-status');
             connectionIndicators.forEach(indicator => {
-                indicator.textContent = 'Connected';
+                indicator.textContent = t('Connected');
                 indicator.className = 'connection-status connected';
             });
 
@@ -1307,7 +1353,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Error parsing WebSocket message:', error);
                 const currentStatusDiv = youtubeStatusDiv;
                 if (currentStatusDiv) {
-                    showStatus('Error processing message from server.', 'youtube', 'error');
+                    showStatus(t('Error processing message from server.'), 'youtube', 'error');
                 }
             }
         };
@@ -1333,7 +1379,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('WebSocket is not connected.');
             const currentStatusDiv = youtubeStatusDiv;
             if (currentStatusDiv) {
-                showStatus('Not connected to server yet.', 'youtube', 'error', 'Not connected');
+                showStatus(t('Not connected to server yet.'), 'youtube', 'error', t('Not connected'));
             }
         }
     }
@@ -1343,6 +1389,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const { type, message, itemId, downloadUrl, filename, title, actualSize, percent, rawSpeed, speedBytesPerSec, source = activeDownloader, isPlaylistItem, playlistIndex, playlistId, playlistTitle, thumbnail, fullPath, downloadFolder, format, quality } = data;
         if (itemId && (dismissedDownloadItems.has(itemId))) return;
         const currentItemState = downloadItemsState.get(itemId);
+        // `message` stays English for the checks below; `shownMessage` is what the user reads.
+        const shownMessage = serverText(data);
 
         // Hide playlist meta items (e.g., 'Fetching playlist: ...')
         if (type === 'queued' && title && title.startsWith('Fetching playlist:')) {
@@ -1358,7 +1406,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         switch (type) {
             case 'queued':
-                createDownloadItemStructure(itemId, title || 'Processing...', source, isPlaylistItem);
+                createDownloadItemStructure(itemId, title || t('Processing...'), source, isPlaylistItem);
                 if (format) {
                     updateDownloadItemFormat(itemId, format, source);
                 }
@@ -1368,7 +1416,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (thumbnail) {
                     updateDownloadItemThumbnail(itemId, thumbnail);
                 }
-                updateDownloadItemStatus(itemId, message || 'Queued...', source);
+                updateDownloadItemStatus(itemId, shownMessage || t('Queued...'), source);
                 // Show pause/play button and remove button immediately for queued items
                 const queuedItemDiv = document.getElementById(`item-${itemId}`);
                 if (queuedItemDiv) {
@@ -1388,7 +1436,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'item_info':
                 if (!downloadItemsState.has(itemId)) {
-                    createDownloadItemStructure(itemId, title || 'Fetching info...', source, isPlaylistItem);
+                    createDownloadItemStructure(itemId, title || t('Fetching info...'), source, isPlaylistItem);
                     // Show pause/play button and remove button for new items
                     const newItemDiv = document.getElementById(`item-${itemId}`);
                     if (newItemDiv) {
@@ -1415,20 +1463,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 break;
             case 'progress':
-                updateDownloadItemProgress(itemId, message, percent, rawSpeed, source, speedBytesPerSec);
+                updateDownloadItemProgress(itemId, shownMessage, percent, rawSpeed, source, speedBytesPerSec);
                 if (currentItemState) currentItemState.status = 'downloading';
                 updateDownloadStats();
                 break;
             case 'complete':
                 // Use clean title from server if available, otherwise fall back to filename or title
-                const displayTitle = data.title || title || filename || 'Download complete';
-                updateDownloadItemComplete(itemId, message, downloadUrl, filename, actualSize, source, fullPath, downloadFolder, thumbnail, displayTitle);
+                const displayTitle = data.title || title || filename || t('Download complete');
+                updateDownloadItemComplete(itemId, message, downloadUrl, filename, actualSize, source, fullPath, downloadFolder, thumbnail, displayTitle, shownMessage);
                 if (userSettings.notificationSound && completionSound) playNotificationSound();
                 // Only show notification if user is not on video tab or window is not focused
                 const isOnVideoTab = activeDownloader === 'youtube';
                 const isWindowFocused = document.hasFocus();
                 if (userSettings.notificationPopup && !(isOnVideoTab && isWindowFocused)) {
-                    showDesktopNotification(displayTitle, message || 'Download complete!');
+                    showDesktopNotification(displayTitle, shownMessage || t('Download complete!'));
                 }
                 showSupportPopupIfEligible();
                 if (userSettings.removeCompleted) {
@@ -1472,12 +1520,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'error':
                 if (!itemId) {
-                    showStatus(message || 'Download request failed.', 'youtube', 'error');
+                    showStatus(shownMessage || t('Download request failed.'), 'youtube', 'error');
                     showFailureHelp(message);
                     break;
                 }
-                createDownloadItemStructure(itemId, title || 'Download failed', source, isPlaylistItem);
-                updateDownloadItemError(itemId, message, source);
+                createDownloadItemStructure(itemId, title || t('Download failed'), source, isPlaylistItem);
+                updateDownloadItemError(itemId, message, source, { displayMessage: shownMessage });
                 break;
             case 'cancel_confirm':
                 dismissedDownloadItems.add(itemId);
@@ -1485,16 +1533,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'pause_confirm':
                 // Update UI to show paused state
-                updateDownloadItemStatus(itemId, message || 'Download paused.', source, 'info');
+                updateDownloadItemStatus(itemId, shownMessage || t('Download paused.'), source, 'info');
                 if (currentItemState) currentItemState.status = 'paused';
                 // Update the pause/play button to show play icon
                 const pausedItemDiv = document.getElementById(`item-${itemId}`);
                 if (pausedItemDiv) {
                     const pausePlayBtn = pausedItemDiv.querySelector('.item-pause-play-btn');
-                    if (pausePlayBtn) {
-                        pausePlayBtn.innerHTML = '<i class="fas fa-play"></i>';
-                        pausePlayBtn.title = 'Resume download';
-                    }
+                    if (pausePlayBtn) setPausePlayButtonState(pausePlayBtn, true);
                     // Hide progress bar when paused
                     const progressBarContainer = pausedItemDiv.querySelector('.progress-bar-container');
                     if (progressBarContainer) progressBarContainer.style.display = 'none';
@@ -1514,10 +1559,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!waitingItemState) break;
                 if (data.waiting) {
                     waitingItemState.waitingForToolUpdate = true;
-                    updateDownloadItemStatus(itemId, `Waiting for the ${data.tool || 'tool'} update, starts right after`, source);
+                    updateDownloadItemStatus(itemId, data.tool
+                        ? t('Waiting for the {tool} update, starts right after', { tool: data.tool })
+                        : t('Waiting for the tool update, starts right after'), source);
                 } else if (waitingItemState.waitingForToolUpdate) {
                     waitingItemState.waitingForToolUpdate = false;
-                    updateDownloadItemStatus(itemId, 'Starting...', source);
+                    updateDownloadItemStatus(itemId, t('Starting...'), source);
                 }
                 break;
             }
@@ -1525,12 +1572,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Handle automatic tool update notifications (yt-dlp only for auto-updates)
                 if ((data.ytdlp && data.ytdlp.updated) || (data.ffmpeg && data.ffmpeg.updated)) {
                     const updateMsg = [
-                        data.ytdlp?.updated ? `yt-dlp updated: ${data.ytdlp.oldVersion} → ${data.ytdlp.newVersion}` : '',
-                        data.ffmpeg?.updated ? `FFmpeg updated to ${data.ffmpeg.newVersion}` : ''
+                        data.ytdlp?.updated ? t('yt-dlp updated: {oldVersion} → {newVersion}', { oldVersion: data.ytdlp.oldVersion, newVersion: data.ytdlp.newVersion }) : '',
+                        data.ffmpeg?.updated ? t('FFmpeg updated to {version}', { version: data.ffmpeg.newVersion }) : ''
                     ].filter(Boolean).join(' · ');
                     console.log(updateMsg);
                     if (userSettings.notificationPopup) {
-                        showDesktopNotification('Tool Updated', updateMsg);
+                        showDesktopNotification(t('Tool Updated'), updateMsg);
                     }
                     // Show status message
                     const statusDivForUpdate = youtubeStatusDiv;
@@ -1543,9 +1590,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const statusDivForGeneral = youtubeStatusDiv;
                 if (statusDivForGeneral) {
                     if (isPotentialRateLimitMessage(message)) {
-                        showPotentialRateLimitNotice(message);
+                        showPotentialRateLimitNotice(shownMessage);
                     } else {
-                        showStatus(message, 'youtube', 'info');
+                        showStatus(shownMessage, 'youtube', 'info');
                     }
                 }
                 // If this is a download status message, show the pause/play button and remove button
@@ -1562,7 +1609,7 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'playlist_complete':
                 const statusDivForPlaylist = youtubeStatusDiv;
                 if (statusDivForPlaylist) {
-                    showStatus(message || 'Playlist processing finished.', 'youtube', 'success');
+                    showStatus(shownMessage || t('Playlist processing finished.'), 'youtube', 'success');
                 }
                 break;
             default:
@@ -1574,6 +1621,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function getLinksArea(source) {
         void source;
         return youtubeDownloadLinksArea;
+    }
+
+    // The paused state lives in data-paused; the icon, tooltip and label follow it.
+    function setPausePlayButtonState(button, paused) {
+        if (!button) return;
+        button.dataset.paused = paused ? 'true' : 'false';
+        button.innerHTML = paused ? '<i class="fas fa-play"></i>' : '<i class="fas fa-pause"></i>';
+        const label = paused ? t('Resume download') : t('Pause download');
+        button.title = label;
+        button.setAttribute('aria-label', label);
     }
 
     function createDownloadItemStructure(itemId, titleText, source, isPlaylistItem = false) {
@@ -1591,7 +1648,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const thumbnailImg = document.createElement('img');
         thumbnailImg.className = 'item-thumbnail';
         thumbnailImg.src = LOCAL_THUMBNAIL_PLACEHOLDER;
-        thumbnailImg.alt = `${titleText} thumbnail`;
+        thumbnailImg.alt = t('{title} thumbnail', { title: titleText });
         thumbnailImg.addEventListener('error', () => {
             thumbnailImg.src = LOCAL_THUMBNAIL_PLACEHOLDER;
         }, { once: true });
@@ -1625,7 +1682,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const statusDiv = document.createElement('div');
         statusDiv.className = 'item-status';
-        statusDiv.textContent = 'Queued...';
+        statusDiv.textContent = t('Queued...');
         statusDiv.setAttribute('role', 'status');
         statusDiv.setAttribute('aria-live', 'polite');
         itemContentDiv.appendChild(statusDiv);
@@ -1634,11 +1691,11 @@ document.addEventListener('DOMContentLoaded', () => {
         progressBarContainer.className = 'progress-bar-container';
         progressBarContainer.style.display = 'none';
         progressBarContainer.setAttribute('role', 'progressbar');
-        progressBarContainer.setAttribute('aria-label', `${titleText} download progress`);
+        progressBarContainer.setAttribute('aria-label', t('{title} download progress', { title: titleText }));
         progressBarContainer.setAttribute('aria-valuemin', '0');
         progressBarContainer.setAttribute('aria-valuemax', '100');
         progressBarContainer.setAttribute('aria-valuenow', '0');
-        progressBarContainer.setAttribute('aria-valuetext', 'Queued');
+        progressBarContainer.setAttribute('aria-valuetext', t('Queued'));
 
         const progressBar = document.createElement('div');
         progressBar.className = 'progress-bar';
@@ -1660,9 +1717,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const pausePlayBtn = document.createElement('button');
         pausePlayBtn.className = 'item-control-btn item-pause-play-btn';
-        pausePlayBtn.innerHTML = '<i class="fas fa-pause"></i>';
-        pausePlayBtn.title = 'Pause download';
-        pausePlayBtn.setAttribute('aria-label', 'Pause download');
+        setPausePlayButtonState(pausePlayBtn, false);
         pausePlayBtn.style.display = 'none';
         pausePlayBtn.onclick = () => handlePausePlayToggle(itemId, source);
         controlButtonsDiv.appendChild(pausePlayBtn);
@@ -1670,8 +1725,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const removeBtn = document.createElement('button');
         removeBtn.className = 'item-control-btn item-remove-btn';
         removeBtn.innerHTML = '<i class="fas fa-times"></i>';
-        removeBtn.title = 'Remove this item';
-        removeBtn.setAttribute('aria-label', 'Remove this item');
+        removeBtn.title = t('Remove this item');
+        removeBtn.setAttribute('aria-label', t('Remove this item'));
         removeBtn.style.display = 'none';
         removeBtn.onclick = () => handleRemoveDownloadItem(itemId, source);
         controlButtonsDiv.appendChild(removeBtn);
@@ -1679,8 +1734,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const retryBtn = document.createElement('button');
         retryBtn.className = 'item-control-btn item-retry-btn';
         retryBtn.innerHTML = '<i class="fas fa-rotate-right" aria-hidden="true"></i>';
-        retryBtn.title = 'Retry this download';
-        retryBtn.setAttribute('aria-label', 'Retry this download');
+        retryBtn.title = t('Retry this download');
+        retryBtn.setAttribute('aria-label', t('Retry this download'));
         retryBtn.style.display = 'none';
         retryBtn.onclick = () => handleRetryDownload(itemId);
         controlButtonsDiv.appendChild(retryBtn);
@@ -1690,8 +1745,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Cancel button (below control buttons)
         const cancelBtn = document.createElement('button');
         cancelBtn.className = 'item-cancel-btn';
-        cancelBtn.textContent = 'Cancel';
-        cancelBtn.setAttribute('aria-label', 'Cancel download');
+        cancelBtn.textContent = t('Cancel');
+        cancelBtn.setAttribute('aria-label', t('Cancel download'));
         cancelBtn.onclick = () => handleCancelDownload(itemId, source);
         buttonsDiv.appendChild(cancelBtn);
 
@@ -1775,7 +1830,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (qualityTag) {
                 let qualityText = quality;
                 if (quality === 'highest') {
-                    qualityText = 'Best';
+                    qualityText = t('Best');
                 } else if (
                     ['8k', '4320', '4320p'].includes(String(quality).toLowerCase())
                 ) {
@@ -1793,12 +1848,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Fixed decimals in the UI language's number style (no thousands grouping,
+    // like toFixed); "12.5" in English, "12,5" in German.
+    function formatFixed(value, digits) {
+        return t.formatNumber(value, { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false });
+    }
+
+    function formatPercent(value, digits = 0) {
+        return t.formatNumber(value / 100, { style: 'percent', minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false });
+    }
+
     function formatSpeed(speedBytesPerSec, unit) {
         if (typeof speedBytesPerSec !== 'number' || isNaN(speedBytesPerSec)) return '';
         if (unit === 'MBps') {
-            return (speedBytesPerSec / 1e6).toFixed(2) + ' MB/s';
+            return formatFixed(speedBytesPerSec / 1e6, 2) + ' MB/s';
         } else if (unit === 'Mbps') {
-            return ((speedBytesPerSec * 8) / 1e6).toFixed(2) + ' Mbps';
+            return formatFixed((speedBytesPerSec * 8) / 1e6, 2) + ' Mbps';
         } else {
             return speedBytesPerSec + ' B/s';
         }
@@ -1858,7 +1923,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let progressText = '';
         if (typeof percent === 'number' && !isNaN(percent)) {
-            progressText += percent.toFixed(1) + '%';
+            progressText = formatPercent(percent, 1);
         }
         let speedText = '';
         let speedVal = null;
@@ -1871,22 +1936,23 @@ document.addEventListener('DOMContentLoaded', () => {
             speedText = formatSpeed(speedVal, userSettings.speedUnitDisplay);
         }
         if (speedText) {
-            if (progressText) progressText += ' at ';
-            progressText += speedText;
+            progressText = progressText
+                ? t('{percent} at {speed}', { percent: progressText, speed: speedText })
+                : speedText;
         }
         if (!progressText && message) {
             progressText = message;
         }
-        if (statusEl) statusEl.textContent = progressText || 'Processing...';
+        if (statusEl) statusEl.textContent = progressText || t('Processing...');
         if (progressBarContainer) progressBarContainer.style.display = 'block';
         if (progressBar && typeof percent === 'number' && !isNaN(percent)) {
             const clampedPercent = Math.max(0, Math.min(100, percent));
             progressBar.style.width = `${clampedPercent}%`;
             progressBarContainer.setAttribute('aria-valuenow', String(Math.round(clampedPercent)));
-            progressBarContainer.setAttribute('aria-valuetext', progressText || `${Math.round(clampedPercent)}% complete`);
+            progressBarContainer.setAttribute('aria-valuetext', progressText || t('{percent} complete', { percent: formatPercent(Math.round(clampedPercent)) }));
         }
         if (statusEl) {
-            statusEl.setAttribute('aria-label', progressText || 'Processing...');
+            statusEl.setAttribute('aria-label', progressText || t('Processing...'));
         }
 
         // Show pause/play button and remove button when download starts (when progress > 0)
@@ -1901,13 +1967,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const progressBucket = Math.floor(Math.max(0, Math.min(100, percent)) / 10);
             if (progressBucket > itemState.lastAnnouncedProgressBucket) {
                 itemState.lastAnnouncedProgressBucket = progressBucket;
-                const title = itemState.title || itemDiv.querySelector('.item-title')?.textContent || 'Download';
-                announceLiveMessage(`${title} ${Math.round(percent)}% complete${speedText ? ` at ${speedText}` : ''}`);
+                const title = itemState.title || itemDiv.querySelector('.item-title')?.textContent || t('Download');
+                const percentText = formatPercent(Math.round(percent));
+                announceLiveMessage(speedText
+                    ? t('{title} {percent} complete at {speed}', { title, percent: percentText, speed: speedText })
+                    : t('{title} {percent} complete', { title, percent: percentText }));
             }
         }
     }
 
-    function updateDownloadItemComplete(itemId, message, downloadUrl, filename, actualSize, source, fullPath, downloadFolder, thumb, cleanTitle) {
+    function updateDownloadItemComplete(itemId, message, downloadUrl, filename, actualSize, source, fullPath, downloadFolder, thumb, cleanTitle, displayMessage) {
         const itemDiv = document.getElementById(`item-${itemId}`);
         if (itemDiv) {
             // Update title with clean title if provided
@@ -1938,12 +2007,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 300);
 
             // Compact status message: "Download complete • filesize" or the server-provided message
-            let statusText = message || `Download complete${actualSize ? ' • ' + actualSize : ''}`;
+            // `message` is the server's English text (for the checks); show the translation.
+            const rawMessage = typeof message === 'string' ? message : '';
+            const shownMessage = displayMessage || serverText({ message: rawMessage });
+            const completeWithSize = actualSize ? t('Download complete • {size}', { size: actualSize }) : '';
+            let statusText = shownMessage || completeWithSize || t('Download complete');
             // If the message is just "Download complete!", append the size if available
-            if (message === 'Download complete!' && actualSize) {
-                statusText = `Download complete • ${actualSize}`;
-            } else if (message.includes('Download complete!') && actualSize && !message.includes(actualSize)) {
-                statusText = message.replace('Download complete!', `Download complete • ${actualSize}`);
+            if (rawMessage === 'Download complete!' && actualSize) {
+                statusText = completeWithSize;
+            } else if (rawMessage.includes('Download complete!') && actualSize && !rawMessage.includes(actualSize)) {
+                statusText = shownMessage.replace(t('Download complete!'), completeWithSize);
             }
             updateDownloadItemStatus(itemId, statusText, source, 'success');
 
@@ -1956,8 +2029,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (hasPath) {
                     const openFolderBtn = document.createElement('button');
                     openFolderBtn.className = 'modern-folder-btn compact-folder-btn';
-                    openFolderBtn.title = 'Open containing folder';
-                    openFolderBtn.innerHTML = '<i class="fas fa-folder-open"></i> Open Folder';
+                    openFolderBtn.title = t('Open containing folder');
+                    openFolderBtn.innerHTML = `<i class="fas fa-folder-open"></i> ${escapeHtml(t('Open Folder'))}`;
                     openFolderBtn.onclick = async () => {
                         if (window.electronAPI && window.electronAPI.openPathInExplorer) {
                             try {
@@ -1973,11 +2046,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 await window.electronAPI.openPathInExplorer(downloadRoot, folderPath);
                             } catch (e) {
                                 console.error('Open folder failed:', e);
-                                showAlert('Unable to open containing folder.', 'Error');
+                                showAlert(t('Unable to open containing folder.'), t('Error'));
                             }
                         } else {
                             console.error('Open folder not available. window.electronAPI:', window.electronAPI);
-                            showAlert('Open folder not available. Make sure you are running in Electron.', 'Not Available');
+                            showAlert(t('Open folder not available. Make sure you are running in Electron.'), t('Not Available'));
                         }
                     };
                     linkEl.appendChild(openFolderBtn);
@@ -1998,23 +2071,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function updateDownloadItemError(itemId, errorMessage, source, { restored = false } = {}) {
+    // errorMessage is the server's English text (matched against known causes);
+    // displayMessage is its translation when the server sent a message key.
+    function updateDownloadItemError(itemId, errorMessage, source, { restored = false, displayMessage = '' } = {}) {
         const itemDiv = document.getElementById(`item-${itemId}`);
         const itemState = downloadItemsState.get(itemId);
         if (itemDiv) {
             const help = buildFailureHelpConfig(errorMessage);
-            const summary = help.id === 'generic' ? 'Download failed. Retry or view the error details.' : help.title;
+            const summary = help.id === 'generic' ? t('Download failed. Retry or view the error details.') : help.title;
             updateDownloadItemStatus(itemId, summary, source, 'error');
             let details = itemDiv.querySelector('.item-error-details');
             if (!details) {
                 details = document.createElement('details');
                 details.className = 'item-error-details';
                 const label = document.createElement('summary');
-                label.textContent = 'Error details';
+                label.textContent = t('Error details');
                 details.append(label, document.createElement('p'));
                 itemDiv.querySelector('.item-content').appendChild(details);
             }
-            details.querySelector('p').textContent = errorMessage || 'Download failed';
+            details.querySelector('p').textContent = displayMessage || serverError({ error: errorMessage }, t('Download failed'));
             disableCancelButton(itemId, source);
             itemDiv.querySelector('.item-cancel-btn').style.display = 'none';
             itemDiv.querySelector('.item-pause-play-btn').style.display = 'none';
@@ -2035,7 +2110,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cancelBtn = itemDiv.querySelector('.item-cancel-btn');
             if (cancelBtn) {
                 cancelBtn.disabled = true;
-                cancelBtn.textContent = 'Done';
+                cancelBtn.textContent = t('Done');
                 cancelBtn.style.opacity = '0.6';
                 cancelBtn.style.cursor = 'default';
             }
@@ -2052,11 +2127,11 @@ document.addEventListener('DOMContentLoaded', () => {
             downloadDismissals.dismiss(itemId);
             removeDownloadItemFromUI(itemId);
             if (![...downloadItemsState.values()].some(item => item.retryable)) hideFailureHelp();
-            showStatus('Download removed.', source, 'success');
+            showStatus(t('Download removed.'), source, 'success');
             void flushDismissedDownloads();
             return true;
         } catch (error) {
-            showStatus(`Could not remove download: ${error.message}. Please try again.`, source, 'error');
+            showStatus(t('Could not remove download: {error}. Please try again.', { error: error.message }), source, 'error');
             return false;
         }
     }
@@ -2097,7 +2172,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const state = downloadItemsState.get(itemId);
         if (!state || state.retrying) return false;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-            showStatus('Waiting for the download server to reconnect. Please retry once connected.', state.source, 'connecting');
+            showStatus(t('Waiting for the download server to reconnect. Please retry once connected.'), state.source, 'connecting');
             return false;
         }
         state.retrying = true;
@@ -2113,7 +2188,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
-                throw new Error(data.error || `Retry failed with ${response.status}`);
+                throw new Error(serverError(data, t('Retry failed with {status}', { status: response.status })));
             }
             const result = await response.json();
             if (result.newItemId && !downloadItemsState.has(result.newItemId)) {
@@ -2126,10 +2201,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             dismissedDownloadItems.add(itemId);
             removeDownloadItemFromUI(itemId);
-            showStatus('Retry requested...', 'youtube', 'success');
+            showStatus(t('Retry requested...'), 'youtube', 'success');
             return true;
         } catch (error) {
-            showStatus(`Could not retry download: ${error.message}`, 'youtube', 'error');
+            showStatus(t('Could not retry download: {error}', { error: error.message }), 'youtube', 'error');
             return false;
         } finally {
             state.retrying = false;
@@ -2143,16 +2218,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (itemDiv) {
             const pausePlayBtn = itemDiv.querySelector('.item-pause-play-btn');
             if (pausePlayBtn) {
-                const isPaused = pausePlayBtn.innerHTML.includes('fa-play');
+                const isPaused = pausePlayBtn.dataset.paused === 'true';
                 const currentItemState = downloadItemsState.get(itemId);
 
                 if (isPaused) {
                     // Currently paused, resume download
                     console.log(`Resuming download for item: ${itemId}, source: ${source}`);
                     sendMessageToServer('resume', { itemId: itemId });
-                    pausePlayBtn.innerHTML = '<i class="fas fa-pause"></i>';
-                    pausePlayBtn.title = 'Pause download';
-                    updateDownloadItemStatus(itemId, 'Resuming...', source);
+                    setPausePlayButtonState(pausePlayBtn, false);
+                    updateDownloadItemStatus(itemId, t('Resuming...'), source);
 
                     // Update state
                     if (currentItemState) currentItemState.status = 'resuming';
@@ -2164,9 +2238,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Currently downloading, pause download
                     console.log(`Pausing download for item: ${itemId}, source: ${source}`);
                     sendMessageToServer('pause', { itemId: itemId });
-                    pausePlayBtn.innerHTML = '<i class="fas fa-play"></i>';
-                    pausePlayBtn.title = 'Resume download';
-                    updateDownloadItemStatus(itemId, 'Pausing...', source);
+                    setPausePlayButtonState(pausePlayBtn, true);
+                    updateDownloadItemStatus(itemId, t('Pausing...'), source);
 
                     // Update state (will be confirmed by pause_confirm from server)
                     if (currentItemState) currentItemState.status = 'pausing';
@@ -2197,7 +2270,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (navigator.onLine === false) {
             if (showErrors) {
-                showStatus("You're offline. Reconnect to load video info.", source, 'offline');
+                showStatus(t("You're offline. Reconnect to load video info."), source, 'offline');
             }
             return null;
         }
@@ -2212,8 +2285,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const statusDiv = youtubeStatusDiv;
                 if (statusDiv) {
                     const reason = blocked.reason === 'pornography'
-                        ? 'Pornography sites are not allowed.'
-                        : 'Gambling sites are not allowed.';
+                        ? t('Pornography sites are not allowed.')
+                        : t('Gambling sites are not allowed.');
                     showStatus(reason, source, 'error');
                 }
             }
@@ -2228,8 +2301,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ url: normalizedUrl, clientId, source })
                 });
                 if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
-                    throw new Error(errorData.error || `HTTP error ${response.status}`);
+                    const errorData = await response.json().catch(() => ({ error: t('Failed to parse error response') }));
+                    throw Object.assign(new Error(errorData.error || `HTTP error ${response.status}`), { displayMessage: serverError(errorData, t('HTTP error {status}', { status: response.status })) });
                 }
                 const videoInfo = await response.json();
                 setCachedPreviewInfo(normalizedUrl, videoInfo);
@@ -2239,7 +2312,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (showErrors) {
                     const statusDiv = youtubeStatusDiv;
                     if (statusDiv) {
-                        showStatus(`Error fetching info: ${error.message}`, source, 'error');
+                        showStatus(t('Error fetching info: {error}', { error: error.displayMessage || error.message }), source, 'error');
                     }
                     showFailureHelp(error.message);
                 }
@@ -2266,7 +2339,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
-            throw new Error(data.error || `Playlist preview failed with ${response.status}`);
+            throw Object.assign(new Error(data.error || `Playlist preview failed with ${response.status}`), { displayMessage: serverError(data, t('Playlist preview failed with {status}', { status: response.status })) });
         }
         return response.json();
     }
@@ -2329,12 +2402,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
         const allSelected = checkboxes.length > 0 && selected === checkboxes.length;
         if (playlistSelectionCount) {
-            playlistSelectionCount.textContent = `${selected} of ${checkboxes.length} selected`;
+            playlistSelectionCount.textContent = t('{selected} of {total} selected', { selected: t.formatNumber(selected), total: t.formatNumber(checkboxes.length) });
         }
         if (playlistSelectAllBtn) {
             playlistSelectAllBtn.innerHTML = allSelected
-                ? '<i class="fas fa-square-minus" aria-hidden="true"></i> <span>Deselect all</span>'
-                : '<i class="fas fa-square-check" aria-hidden="true"></i> <span>Select all</span>';
+                ? `<i class="fas fa-square-minus" aria-hidden="true"></i> <span>${escapeHtml(t('Deselect all'))}</span>`
+                : `<i class="fas fa-square-check" aria-hidden="true"></i> <span>${escapeHtml(t('Select all'))}</span>`;
             playlistSelectAllBtn.disabled = checkboxes.length === 0;
         }
         if (confirmPlaylistSelectionBtn) {
@@ -2352,7 +2425,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const preview = await fetchPlaylistPreview(requestPayload.url);
         pendingPlaylistSelectionRequest = requestPayload;
         if (playlistSelectionSummary) {
-            playlistSelectionSummary.textContent = `${preview.title} • ${preview.items.length} item${preview.items.length === 1 ? '' : 's'} found.`;
+            playlistSelectionSummary.textContent = t.plural(preview.items.length, '{title} • {count} item found.', '{title} • {count} items found.', { title: preview.title });
         }
         renderPlaylistSelectionItems(preview);
         if (playlistSelectionModal) {
@@ -2388,8 +2461,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function createScheduledDownloadItem(schedule) {
         const itemId = schedule.scheduleId;
-        createDownloadItemStructure(itemId, schedule.title || 'Scheduled download', schedule.source || 'youtube', schedule.playlistAction === 'full');
-        updateDownloadItemStatus(itemId, `Scheduled for ${new Date(schedule.scheduledFor).toLocaleString()}`, schedule.source || 'youtube', 'info');
+        createDownloadItemStructure(itemId, schedule.title || t('Scheduled download'), schedule.source || 'youtube', schedule.playlistAction === 'full');
+        updateDownloadItemStatus(itemId, t('Scheduled for {time}', { time: t.formatDate(new Date(schedule.scheduledFor), { dateStyle: 'short', timeStyle: 'medium' }) }), schedule.source || 'youtube', 'info');
         const itemState = downloadItemsState.get(itemId);
         if (itemState) {
             itemState.status = 'scheduled';
@@ -2411,7 +2484,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (retryBtn) retryBtn.style.display = 'none';
             if (removeBtn) removeBtn.style.display = 'inline-flex';
             if (cancelBtn) {
-                cancelBtn.textContent = 'Cancel Schedule';
+                cancelBtn.textContent = t('Cancel Schedule');
                 cancelBtn.onclick = () => handleDeleteScheduledDownload(schedule.scheduleId);
             }
         }
@@ -2465,9 +2538,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await recoverableResponse.json();
                 (data.items || []).forEach((item) => {
                     if (dismissedDownloadItems.has(item.itemId)) return;
-                    createDownloadItemStructure(item.itemId, item.title || 'Recoverable download', item.source || 'youtube', item.isPlaylistItem);
+                    createDownloadItemStructure(item.itemId, item.title || t('Recoverable download'), item.source || 'youtube', item.isPlaylistItem);
                     showActionButtons(item.itemId);
-                    updateDownloadItemStatus(item.itemId, 'Paused. Ready to resume after restart.', item.source || 'youtube', 'info');
+                    updateDownloadItemStatus(item.itemId, t('Paused. Ready to resume after restart.'), item.source || 'youtube', 'info');
                     const itemState = downloadItemsState.get(item.itemId);
                     if (itemState) {
                         itemState.status = 'paused';
@@ -2476,8 +2549,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const pausePlayBtn = itemDiv?.querySelector('.item-pause-play-btn');
                     if (pausePlayBtn) {
                         pausePlayBtn.style.display = 'inline-flex';
-                        pausePlayBtn.innerHTML = '<i class="fas fa-play"></i>';
-                        pausePlayBtn.title = 'Resume download';
+                        setPausePlayButtonState(pausePlayBtn, true);
                     }
                 });
             }
@@ -2493,8 +2565,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await failedResponse.json();
                 (data.items || []).forEach((failed) => {
                     if (dismissedDownloadItems.has(failed.itemId)) return;
-                    createDownloadItemStructure(failed.itemId, failed.title || 'Failed download', failed.source || 'youtube', false);
-                    updateDownloadItemError(failed.itemId, failed.message || 'Download failed', failed.source || 'youtube', { restored: true });
+                    createDownloadItemStructure(failed.itemId, failed.title || t('Failed download'), failed.source || 'youtube', false);
+                    updateDownloadItemError(failed.itemId, failed.message || 'Download failed', failed.source || 'youtube', { restored: true, displayMessage: serverText(failed, serverError(failed, t('Download failed'))) });
                     if (failed.thumbnail) updateDownloadItemThumbnail(failed.itemId, failed.thumbnail);
                     if (failed.format) updateDownloadItemFormat(failed.itemId, failed.format);
                     if (failed.quality) updateDownloadItemQuality(failed.itemId, failed.quality);
@@ -2512,22 +2584,22 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
-                throw new Error(data.error || `Schedule delete failed with ${response.status}`);
+                throw new Error(serverError(data, t('Schedule delete failed with {status}', { status: response.status })));
             }
             handleRemoveDownloadItem(scheduleId, 'youtube');
         } catch (error) {
-            showStatus(`Could not cancel scheduled download: ${error.message}`, 'youtube', 'error');
+            showStatus(t('Could not cancel scheduled download: {error}', { error: error.message }), 'youtube', 'error');
         }
     }
 
     async function startDownloadCommon(url, format, quality, source, playlistActionVal, concurrencyVal, singleConcurrencyVal, options = {}) {
         const statusDiv = youtubeStatusDiv;
         if (!url) {
-            if (statusDiv) showStatus('Please paste a URL.', source, 'error');
+            if (statusDiv) showStatus(t('Please paste a URL.'), source, 'error');
             return;
         }
         if (navigator.onLine === false) {
-            if (statusDiv) showStatus("You're offline. Reconnect to download.", source, 'offline');
+            if (statusDiv) showStatus(t("You're offline. Reconnect to download."), source, 'offline');
             return;
         }
 
@@ -2536,14 +2608,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (blocked.blocked) {
             if (statusDiv) {
                 const reason = blocked.reason === 'pornography'
-                    ? 'Pornography sites are not allowed.'
-                    : 'Gambling sites are not allowed.';
+                    ? t('Pornography sites are not allowed.')
+                    : t('Gambling sites are not allowed.');
                 showStatus(reason, source, 'error');
             }
             return;
         }
 
-        if (statusDiv) showStatus('Requesting download...', source, 'info');
+        if (statusDiv) showStatus(t('Requesting download...'), source, 'info');
         hideFailureHelp();
 
         const hdrOverride = options.preferHdr ?? hdrModeOverrideSelect?.value;
@@ -2575,7 +2647,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
-                throw new Error(data.error || `Scheduling failed with ${response.status}`);
+                throw new Error(serverError(data, t('Scheduling failed with {status}', { status: response.status })));
             }
             const scheduled = await response.json();
             createScheduledDownloadItem({
@@ -2589,7 +2661,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 playlistAction: playlistActionVal
             });
             if (statusDiv) {
-                showStatus(`Download scheduled for ${new Date(scheduled.scheduledFor).toLocaleString()}.`, source, 'success');
+                showStatus(t('Download scheduled for {time}.', { time: t.formatDate(new Date(scheduled.scheduledFor), { dateStyle: 'short', timeStyle: 'medium' }) }), source, 'success');
             }
             return;
         }
@@ -2616,7 +2688,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (confirmCheckbox && !confirmCheckbox.checked) {
-                    showStatus('Please confirm you have the rights to download this content.', 'youtube', 'error');
+                    showStatus(t('Please confirm you have the rights to download this content.'), 'youtube', 'error');
                     confirmCheckbox.focus();
                     return;
                 }
@@ -2656,7 +2728,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 await startDownloadCommon(url, format, qualityVal, 'youtube', playlistAction, parseInt(concurrency), parseInt(singleConcurrency));
             } catch (error) {
-                showStatus(`Could not start download: ${error.message}`, 'youtube', 'error');
+                showStatus(t('Could not start download: {error}', { error: error.displayMessage || error.message }), 'youtube', 'error');
             }
         };
     }
@@ -2679,7 +2751,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (source === 'youtube') {
             if (isVideoFormat) {
                 qualities = [
-                    { value: 'highest', text: 'Best available (up to 8K)' },
+                    { value: 'highest', text: t('Best available (up to 8K)') },
                     { value: '4320', text: '8K (4320p)' },
                     { value: '2160', text: '4K (2160p)' },
                     { value: '1440', text: '2K (1440p)' },
@@ -2690,7 +2762,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ];
             } else if (isAudioFormat) {
                 qualities = [
-                    { value: 'highest', text: 'Highest Quality' },
+                    { value: 'highest', text: t('Highest Quality') },
                     { value: '320', text: '320 kbps' },
                     { value: '256', text: '256 kbps' },
                     { value: '192', text: '192 kbps' },
@@ -2910,7 +2982,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function formatUIScaleLabel(scale) {
         const safeScale = clampNumber(Number(scale) || 1, UI_SCALE_MIN, UI_SCALE_MAX);
-        return `${Math.round(safeScale * 100)}%`;
+        return formatPercent(Math.round(safeScale * 100));
     }
 
     function getUIDensityMode(scale) {
@@ -2965,7 +3037,8 @@ document.addEventListener('DOMContentLoaded', () => {
             includeAutoCaptions: false,
             smartRetry: true,
             smartRetryAttempts: 3,
-            lanAccess: false
+            lanAccess: false,
+            language: 'auto'
         };
         const storedSettings = localStorage.getItem('ytdUserSettings');
         let settings = storedSettings ? JSON.parse(storedSettings) : { ...defaults };
@@ -2987,6 +3060,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const newUsageStats = usageStatsCheckbox ? usageStatsCheckbox.checked : userSettings.usageStats === true;
         const oldUsageStats = userSettings.usageStats === true;
         const startWithWindowsCheckbox = document.getElementById('startWithWindows');
+        const languageSelect = document.getElementById('languageSelect');
+        const previousLanguage = userSettings.language || 'auto';
 
         // Get the new startWithWindows value
         const newStartWithWindows = startWithWindowsCheckbox ? startWithWindowsCheckbox.checked : false;
@@ -3024,7 +3099,8 @@ document.addEventListener('DOMContentLoaded', () => {
             includeAutoCaptions: includeAutoCaptionsCheckbox ? includeAutoCaptionsCheckbox.checked : false,
             smartRetry: true,
             smartRetryAttempts: 3,
-            lanAccess: userSettings.lanAccess === true
+            lanAccess: userSettings.lanAccess === true,
+            language: languageSelect && languageSelect.value ? languageSelect.value : userSettings.language || 'auto'
         };
         persistDownloadFolderPath(userSettings.downloadFolder);
 
@@ -3052,9 +3128,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (kbps === 0) {
                 speedValue.textContent = '∞';
             } else if (kbps >= 1000) {
-                speedValue.textContent = (kbps / 1000).toFixed(0) + ' MB/s';
+                speedValue.textContent = formatFixed(kbps / 1000, 0) + ' MB/s';
             } else {
-                speedValue.textContent = kbps + ' KB/s';
+                speedValue.textContent = t.formatNumber(kbps) + ' KB/s';
             }
         }
 
@@ -3099,9 +3175,77 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const currentStatusDiv = youtubeStatusDiv;
         if (currentStatusDiv) {
-            showStatus('Settings saved!', 'youtube', 'success');
+            showStatus(t('Settings saved!'), 'youtube', 'success');
         }
         console.log("Settings saved:", userSettings);
+        applyLanguageChange(previousLanguage);
+    }
+
+    // Fill Settings → Language: "Match my device (…)" first, then every shipped
+    // language in its own name, plus its name in the current UI language.
+    function populateLanguageSelect() {
+        const languageSelect = document.getElementById('languageSelect');
+        if (!languageSelect) return;
+        const languages = Array.isArray(t.languages) ? t.languages : [];
+        const nativeNameOf = (code) => languages.find(language => language.code === code)?.nativeName || code;
+        let displayNames = null;
+        try {
+            displayNames = new Intl.DisplayNames([t.lang], { type: 'language' });
+        } catch {
+            displayNames = null;
+        }
+
+        const autoOption = document.createElement('option');
+        autoOption.value = 'auto';
+        autoOption.textContent = t('Match my device ({language})', { language: nativeNameOf(t.resolveLanguage('auto')) });
+
+        const languageOptions = languages.map((language) => {
+            const option = document.createElement('option');
+            option.value = language.code;
+            let localName = language.name;
+            try {
+                localName = displayNames?.of(language.code) || language.name;
+            } catch {
+                localName = language.name;
+            }
+            option.textContent = localName && localName !== language.nativeName
+                ? `${language.nativeName} — ${localName}`
+                : language.nativeName;
+            option.lang = language.code;
+            option.dir = language.dir;
+            return option;
+        });
+
+        languageSelect.replaceChildren(autoOption, ...languageOptions);
+        const preference = userSettings.language || 'auto';
+        languageSelect.value = preference;
+        if (languageSelect.value !== preference) languageSelect.value = 'auto';
+    }
+
+    // True while anything is queued, downloading, pausing, resuming or being
+    // processed. Paused, scheduled and failed items come back from the server
+    // after a reload (loadRecoverableDownloads); these would not.
+    function hasBusyDownloads() {
+        const settledStatuses = new Set(['complete', 'error', 'paused', 'scheduled']);
+        return Array.from(downloadItemsState.values()).some(item => !settledStatuses.has(item.status));
+    }
+
+    function applyLanguageChange(previousPreference) {
+        const preference = userSettings.language || 'auto';
+        if (preference === previousPreference) return;
+        if (t.resolveLanguage(preference) === t.lang) return;
+
+        saveUserSettingsToStorage();
+        if (hasBusyDownloads()) {
+            void showAlert(t('The new language will be used the next time you open GetVideosLocally.'), t('Language'));
+            return;
+        }
+
+        // localStorage is already written; flush it to disk before reloading.
+        const flushed = window.electronAPI?.flushStorageData
+            ? Promise.resolve(window.electronAPI.flushStorageData()).catch(() => {})
+            : Promise.resolve();
+        void flushed.then(() => location.reload());
     }
 
     function populateSettingsModal() {
@@ -3118,17 +3262,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // If still not found, try to create it programmatically
         if (!keepPcAwakeCheckbox) {
             console.log('Creating keepPcAwake checkbox programmatically...');
-            const notificationsSection = document.querySelector('.settings-section h3');
-            if (notificationsSection && notificationsSection.textContent === 'Notifications') {
-                const section = notificationsSection.parentElement;
-                const notificationPopupDiv = section.querySelector('#notificationPopup').closest('.setting-item');
+            // Find the Notifications section by its checkbox, not by its (translated) heading text.
+            const notificationPopupInput = document.getElementById('notificationPopup');
+            if (notificationPopupInput) {
+                const notificationPopupDiv = notificationPopupInput.closest('.setting-item');
 
                 if (notificationPopupDiv) {
                     const newCheckboxDiv = document.createElement('div');
                     newCheckboxDiv.className = 'setting-item checkbox-group';
                     newCheckboxDiv.innerHTML = `
                         <input type="checkbox" id="keepPcAwake" name="keepPcAwake">
-                        <label for="keepPcAwake">Keep PC awake during downloads</label>
+                        <label for="keepPcAwake">${escapeHtml(t('Keep PC awake during downloads'))}</label>
                     `;
 
                     // Insert after notificationPopup
@@ -3161,6 +3305,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (downloadFolderInput) downloadFolderInput.value = userSettings.downloadFolder || '';
         if (skipDeleteConfirmationCheckbox) skipDeleteConfirmationCheckbox.checked = userSettings.skipDeleteConfirmation;
         if (themePresetSelect) themePresetSelect.value = userSettings.themePreset;
+        populateLanguageSelect();
         if (preferHdrCheckbox) preferHdrCheckbox.checked = userSettings.preferHdr === true;
         if (subtitleModeSelect) subtitleModeSelect.value = userSettings.subtitleMode || 'none';
         if (subtitleLanguagesInput) subtitleLanguagesInput.value = userSettings.subtitleLanguages || 'en.*,en';
@@ -3252,7 +3397,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (latestSetupHealthResult) {
             renderSetupHealthResult(latestSetupHealthResult);
         } else {
-            renderSetupHealthLoading('Run the setup health check to verify your local downloader setup.');
+            renderSetupHealthLoading(t('Run the setup health check to verify your local downloader setup.'));
         }
     }
 
@@ -3317,28 +3462,33 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatUpdateCheckedTime(timestamp) {
         if (!timestamp) return '';
         const minutes = Math.round((Date.now() - timestamp) / 60000);
-        if (minutes < 1) return 'Checked just now';
-        if (minutes < 60) return `Checked ${minutes} min ago`;
-        return `Checked at ${new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+        if (minutes < 1) return t('Checked just now');
+        if (minutes < 60) return t.plural(minutes, 'Checked {count} min ago', 'Checked {count} min ago');
+        return t('Checked at {time}', { time: t.formatDate(new Date(timestamp), { hour: 'numeric', minute: '2-digit' }) });
     }
 
     function describeAppUpdate(state) {
-        const latest = state.latestVersion ? `version ${state.latestVersion}` : 'a new version';
+        const version = state.latestVersion;
         switch (state.status) {
             case 'checking':
-                return { title: 'Checking for updates…', desc: 'This only takes a moment', button: 'Checking…', busy: true };
+                return { title: t('Checking for updates…'), desc: t('This only takes a moment'), button: t('Checking…'), busy: true };
             case 'up-to-date':
-                return { title: "You're up to date", desc: formatUpdateCheckedTime(state.lastChecked), button: 'Check now' };
+                return { title: t("You're up to date"), desc: formatUpdateCheckedTime(state.lastChecked), button: t('Check now') };
             case 'downloading':
-                return { title: `Getting ${latest}`, desc: `${state.progress || 0}% · You can keep using the app`, button: 'Downloading…', busy: true };
+                return {
+                    title: version ? t('Getting version {version}', { version }) : t('Getting a new version'),
+                    desc: t('{percent} · You can keep using the app', { percent: formatPercent(state.progress || 0) }),
+                    button: t('Downloading…'),
+                    busy: true
+                };
             case 'ready':
-                return { title: `${latest.charAt(0).toUpperCase()}${latest.slice(1)} is ready`, desc: 'Restart to finish. Your settings and history stay the same.', button: 'Restart to update', action: true };
+                return { title: version ? t('Version {version} is ready', { version }) : t('A new version is ready'), desc: t('Restart to finish. Your settings and history stay the same.'), button: t('Restart to update'), action: true };
             case 'available-manual':
-                return { title: `${latest.charAt(0).toUpperCase()}${latest.slice(1)} is available`, desc: 'This is the portable copy, so download the new version from the website.', button: 'Get update', action: true };
+                return { title: version ? t('Version {version} is available', { version }) : t('A new version is available'), desc: t('This is the portable copy, so download the new version from the website.'), button: t('Get update'), action: true };
             case 'error':
-                return { title: 'Check for updates', desc: state.error || "Couldn't check for updates. Try again later.", button: 'Try again' };
+                return { title: t('Check for updates'), desc: serverError(state, t("Couldn't check for updates. Try again later.")), button: t('Try again') };
             default:
-                return { title: 'Check for updates', desc: 'Not checked yet', button: 'Check now' };
+                return { title: t('Check for updates'), desc: t('Not checked yet'), button: t('Check now') };
         }
     }
 
@@ -3351,8 +3501,8 @@ document.addEventListener('DOMContentLoaded', () => {
             appUpdateBtn.hidden = !view.action;
             const label = appUpdateBtn.querySelector('.app-update-btn-text');
             if (label) label.textContent = view.button;
-            appUpdateBtn.title = view.action ? `${view.title}. ${view.desc}` : '';
-            appUpdateBtn.setAttribute('aria-label', view.action ? `${view.button}: ${view.title}` : view.button);
+            appUpdateBtn.title = view.action ? t('{title}. {description}', { title: view.title, description: view.desc }) : '';
+            appUpdateBtn.setAttribute('aria-label', view.action ? t('{action}: {title}', { action: view.button, title: view.title }) : view.button);
         }
 
         const title = document.getElementById('aboutUpdateTitle');
@@ -3373,7 +3523,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (state.status === 'ready' && appUpdateReadyAnnounced !== state.latestVersion) {
             appUpdateReadyAnnounced = state.latestVersion;
-            showNotification(`${view.title}. Click "Restart to update" at the top when you're ready.`, 'success');
+            showNotification(t('{title}. Click "Restart to update" at the top when you\'re ready.', { title: view.title }), 'success');
         }
     }
 
@@ -3395,9 +3545,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!window.electronAPI?.installAppUpdate) return;
         const result = await window.electronAPI.installAppUpdate();
         if (result?.ok) {
-            showNotification('Restarting to finish the update…', 'info');
+            showNotification(t('Restarting to finish the update…'), 'info');
         } else if (result?.reason === 'downloads-active') {
-            showNotification('Downloads are still running. Restart to update once they finish, or the update will install the next time you close the app.', 'warning');
+            showNotification(t('Downloads are still running. Restart to update once they finish, or the update will install the next time you close the app.'), 'warning');
         }
     }
 
@@ -3519,21 +3669,23 @@ document.addEventListener('DOMContentLoaded', () => {
         updateToolsBtn.onclick = async () => {
             try {
                 updateToolsBtn.disabled = true;
-                updateToolsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking...';
-                showUpdateStatus('Checking for updates...', '');
+                updateToolsBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(t('Checking...'))}`;
+                showUpdateStatus(t('Checking for updates...'), '');
 
                 const result = await window.updateTools();
 
                 if (result && result.deferred) {
                     const count = result.waitingFor || 1;
-                    showUpdateStatus(`${result.tool || 'Tool'} update downloaded and verified. It installs after ${count === 1 ? 'the running download finishes' : `the ${count} running downloads finish`}; new downloads wait for it.`, 'success');
+                    showUpdateStatus(result.tool
+                        ? t.plural(count, '{tool} update downloaded and verified. It installs after the running download finishes; new downloads wait for it.', '{tool} update downloaded and verified. It installs after the {count} running downloads finish; new downloads wait for it.', { tool: result.tool })
+                        : t.plural(count, 'Tool update downloaded and verified. It installs after the running download finishes; new downloads wait for it.', 'Tool update downloaded and verified. It installs after the {count} running downloads finish; new downloads wait for it.'), 'success');
                     return;
                 }
 
                 if (result && result.error) {
-                    showUpdateStatus(`Error: ${result.error}`, 'error');
+                    showUpdateStatus(t('Error: {error}', { error: serverError(result) }), 'error');
                     updateToolsBtn.disabled = false;
-                    updateToolsBtn.innerHTML = '<i class="fas fa-download"></i> Update Tools';
+                    updateToolsBtn.innerHTML = `<i class="fas fa-download"></i> ${escapeHtml(t('Update Tools'))}`;
                     return;
                 }
 
@@ -3545,29 +3697,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Check yt-dlp results
                     if (result.ytdlp) {
                         if (result.ytdlp.updated) {
-                            message += `✅ yt-dlp updated: ${result.ytdlp.oldVersion} → ${result.ytdlp.newVersion}\n`;
+                            message += `✅ ${t('yt-dlp updated: {oldVersion} → {newVersion}', { oldVersion: result.ytdlp.oldVersion, newVersion: result.ytdlp.newVersion })}\n`;
                             hasUpdates = true;
                         } else if (result.ytdlp.error) {
-                            message += `❌ yt-dlp update failed: ${result.ytdlp.error}\n`;
+                            message += `❌ ${t('yt-dlp update failed: {error}', { error: serverError(result.ytdlp) })}\n`;
                             hasErrors = true;
                         } else {
-                            message += `ℹ️ yt-dlp: ${result.ytdlp.reason || 'No update available'}\n`;
+                            message += `ℹ️ ${t('yt-dlp: {reason}', { reason: serverReason(result.ytdlp, t('No update available')) })}\n`;
                         }
                     }
 
                     // Check FFmpeg results
                     if (result.ffmpeg) {
                         if (result.ffmpeg.updated) {
-                            message += `✅ FFmpeg updated: ${result.ffmpeg.oldVersion} → ${result.ffmpeg.newVersion}\n`;
+                            message += `✅ ${t('FFmpeg updated: {oldVersion} → {newVersion}', { oldVersion: result.ffmpeg.oldVersion, newVersion: result.ffmpeg.newVersion })}\n`;
                             hasUpdates = true;
                         } else if (result.ffmpeg.hasUpdate) {
-                            message += `🔄 FFmpeg ${result.ffmpeg.latestVersion} is available but could not be installed: ${result.ffmpeg.reason || 'unknown error'}\n`;
+                            message += `🔄 ${t('FFmpeg {version} is available but could not be installed: {reason}', { version: result.ffmpeg.latestVersion, reason: serverReason(result.ffmpeg, t('unknown error')) })}\n`;
                             hasErrors = true;
                         } else if (result.ffmpeg.error) {
-                            message += `❌ FFmpeg check failed: ${result.ffmpeg.error}\n`;
+                            message += `❌ ${t('FFmpeg check failed: {error}', { error: serverError(result.ffmpeg) })}\n`;
                             hasErrors = true;
                         } else {
-                            message += `ℹ️ FFmpeg: ${result.ffmpeg.reason || 'No update available'}\n`;
+                            message += `ℹ️ ${t('FFmpeg: {reason}', { reason: serverReason(result.ffmpeg, t('No update available')) })}\n`;
                         }
                     }
 
@@ -3576,17 +3728,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else if (hasErrors) {
                         showUpdateStatus(message.trim(), 'error');
                     } else {
-                        showUpdateStatus(message.trim() || 'All tools are up to date.', '');
+                        showUpdateStatus(message.trim() || t('All tools are up to date.'), '');
                     }
                 } else {
-                    showUpdateStatus('Unable to check for updates. Please try again.', 'error');
+                    showUpdateStatus(t('Unable to check for updates. Please try again.'), 'error');
                 }
             } catch (error) {
                 console.error('Error updating tools:', error);
-                showUpdateStatus(`Error: ${error.message || 'Failed to update tools. Please try again.'}`, 'error');
+                showUpdateStatus(t('Error: {error}', { error: error.message || t('Failed to update tools. Please try again.') }), 'error');
             } finally {
                 updateToolsBtn.disabled = false;
-                updateToolsBtn.innerHTML = '<i class="fas fa-download"></i> Update Tools';
+                updateToolsBtn.innerHTML = `<i class="fas fa-download"></i> ${escapeHtml(t('Update Tools'))}`;
             }
         };
     }
@@ -3620,7 +3772,7 @@ document.addEventListener('DOMContentLoaded', () => {
             body: JSON.stringify(buildDiagnosticsContext()),
         });
         if (!response.ok) {
-            throw new Error(`Failed to generate diagnostics: ${response.statusText}`);
+            throw new Error(t('Failed to generate diagnostics: {error}', { error: response.statusText }));
         }
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
@@ -3639,12 +3791,12 @@ document.addEventListener('DOMContentLoaded', () => {
         generateDiagnosticsBtn.onclick = async () => {
             try {
                 generateDiagnosticsBtn.disabled = true;
-                generateDiagnosticsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+                generateDiagnosticsBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(t('Generating...'))}`;
                 await downloadDiagnosticsFile();
-                showStatus('Diagnostics bundle downloaded successfully!', activeDownloader, 'success');
+                showStatus(t('Diagnostics bundle downloaded successfully!'), activeDownloader, 'success');
             } catch (error) {
                 console.error('Error generating diagnostics:', error);
-                showStatus(`Failed to generate diagnostics: ${error.message}`, activeDownloader, 'error');
+                showStatus(t('Failed to generate diagnostics: {error}', { error: error.message }), activeDownloader, 'error');
             } finally {
                 generateDiagnosticsBtn.disabled = false;
                 generateDiagnosticsBtn.innerHTML = generateDiagnosticsLabel;
@@ -3678,7 +3830,7 @@ document.addEventListener('DOMContentLoaded', () => {
         reportProblemMessage.value = message;
         reportProblemEmail.value = localStorage.getItem(REPORT_EMAIL_KEY) || '';
         reportProblemIncludeDiagnostics.checked = false;
-        if (cancelReportProblemBtn) cancelReportProblemBtn.textContent = 'Cancel';
+        if (cancelReportProblemBtn) cancelReportProblemBtn.textContent = t('Cancel');
         setReportStatus('');
         openModalWithFocus(reportProblemModal, reportProblemMessage);
         if (message) {
@@ -3713,10 +3865,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }, true);
 
         document.getElementById('reportProblemPreviewBtn')?.addEventListener('click', async () => {
-            setReportStatus('Building the diagnostics report...');
+            setReportStatus(t('Building the diagnostics report...'));
             try {
                 await downloadDiagnosticsFile();
-                setReportStatus('A copy was saved to your downloads. This is exactly what gets attached.', 'ok');
+                setReportStatus(t('A copy was saved to your downloads. This is exactly what gets attached.'), 'ok');
             } catch (error) {
                 setReportStatus(error.message, 'bad');
             }
@@ -3728,12 +3880,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const message = reportProblemMessage.value.trim();
             const email = reportProblemEmail.value.trim();
             if (!message) {
-                setReportStatus('Describe what went wrong first.', 'bad');
+                setReportStatus(t('Describe what went wrong first.'), 'bad');
                 reportProblemMessage.focus();
                 return;
             }
             if (email && !reportProblemEmail.checkValidity()) {
-                setReportStatus('That email address does not look right. Fix it or leave it empty.', 'bad');
+                setReportStatus(t('That email address does not look right. Fix it or leave it empty.'), 'bad');
                 reportProblemEmail.focus();
                 return;
             }
@@ -3742,8 +3894,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const originalLabel = sendReportProblemBtn.innerHTML;
             reportProblemSending = true;
             sendReportProblemBtn.disabled = true;
-            sendReportProblemBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
-            setReportStatus(includeDiagnostics ? 'Building the diagnostics report and sending...' : 'Sending...');
+            sendReportProblemBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(t('Sending...'))}`;
+            setReportStatus(includeDiagnostics ? t('Building the diagnostics report and sending...') : t('Sending...'));
             try {
                 const response = await window.localApiAuth.authorizedFetch(localApiUrl('/api/report-problem'), {
                     method: 'POST',
@@ -3756,15 +3908,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     }),
                 });
                 const result = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(result.error || `The report could not be sent (HTTP ${response.status}).`);
+                if (!response.ok) throw new Error(serverError(result, t('The report could not be sent (HTTP {status}).', { status: response.status })));
                 if (email) localStorage.setItem(REPORT_EMAIL_KEY, email);
                 else localStorage.removeItem(REPORT_EMAIL_KEY);
                 reportProblemForm.classList.add('is-sent');
-                if (cancelReportProblemBtn) cancelReportProblemBtn.textContent = 'Close';
-                setReportStatus(
-                    `${result.diagnosticsIncluded ? 'Report and diagnostics sent.' : 'Report sent.'} ${email ? `Replies go to ${email}.` : 'Thanks for telling us.'}`,
-                    'ok'
-                );
+                if (cancelReportProblemBtn) cancelReportProblemBtn.textContent = t('Close');
+                let sentText;
+                if (result.diagnosticsIncluded) {
+                    sentText = email
+                        ? t('Report and diagnostics sent. Replies go to {email}.', { email })
+                        : t('Report and diagnostics sent. Thanks for telling us.');
+                } else {
+                    sentText = email
+                        ? t('Report sent. Replies go to {email}.', { email })
+                        : t('Report sent. Thanks for telling us.');
+                }
+                setReportStatus(sentText, 'ok');
             } catch (error) {
                 setReportStatus(error.message, 'bad');
             } finally {
@@ -3847,7 +4006,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Aceternity UI Custom Confirmation Modal
-    function confirmDelete(message, title = 'Confirm Deletion') {
+    function confirmDelete(message, title = t('Confirm Deletion')) {
         if (shouldSkipDeleteConfirmation()) {
             return true;
         }
@@ -3905,7 +4064,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Aceternity UI Custom Alert Modal
-    function showAlert(message, title = 'Notification') {
+    function showAlert(message, title = t('Notification')) {
         return new Promise((resolve) => {
             const modal = document.getElementById('alertModal');
             const messageEl = document.getElementById('alertMessage');
@@ -4030,7 +4189,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const selectedIds = getSelectedPlaylistItemIds();
             if (selectedIds.length === 0) {
-                showStatus('Select at least one playlist item before queueing.', 'youtube', 'error');
+                showStatus(t('Select at least one playlist item before queueing.'), 'youtube', 'error');
                 return;
             }
             const request = pendingPlaylistSelectionRequest;
@@ -4050,7 +4209,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 );
             } catch (error) {
-                showStatus(`Could not queue selected playlist items: ${error.message}`, 'youtube', 'error');
+                showStatus(t('Could not queue selected playlist items: {error}', { error: error.displayMessage || error.message }), 'youtube', 'error');
             }
         });
         playlistSelectionModal.addEventListener('click', (event) => {
@@ -4068,7 +4227,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showTab('youtube');
         };
         logoContainer.addEventListener('click', activateLogo);
-        makeElementKeyboardClickable(logoContainer, activateLogo, 'Open downloads');
+        makeElementKeyboardClickable(logoContainer, activateLogo, t('Open downloads'));
     }
 
     // --- Initializations ---
@@ -4110,7 +4269,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else {
                 console.error('Folder picker not available. window.electronAPI:', window.electronAPI);
-                showAlert('Folder picker not available. Make sure you are running in Electron.', 'Not Available');
+                showAlert(t('Folder picker not available. Make sure you are running in Electron.'), t('Not Available'));
             }
         };
     }
@@ -4123,7 +4282,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else {
                 console.error('Default folder not available. window.electronAPI:', window.electronAPI);
-                showAlert('Default folder not available. Make sure you are running in Electron.', 'Not Available');
+                showAlert(t('Default folder not available. Make sure you are running in Electron.'), t('Not Available'));
             }
         };
     }
@@ -4131,25 +4290,25 @@ document.addEventListener('DOMContentLoaded', () => {
         openFolderBtn.onclick = async () => {
             const folderPath = downloadFolderInput.value;
             if (!folderPath) {
-                showAlert('No folder selected.', 'No Selection');
+                showAlert(t('No folder selected.'), t('No Selection'));
                 return;
             }
             if (window.electronAPI && window.electronAPI.openPathInExplorer) {
                 const result = await window.electronAPI.openPathInExplorer(folderPath, folderPath);
                 if (!result?.success) {
-                    await showAlert(`Unable to open this folder: ${result?.error || 'Unknown error'}`, 'Open Folder Failed');
+                    await showAlert(t('Unable to open this folder: {error}', { error: serverError(result, t('Unknown error')) }), t('Open Folder Failed'));
                 }
             } else {
                 console.error('Open folder not available. window.electronAPI:', window.electronAPI);
-                showAlert('Open folder not available. Make sure you are running in Electron.', 'Not Available');
+                showAlert(t('Open folder not available. Make sure you are running in Electron.'), t('Not Available'));
             }
         };
     }
 
     // Paste button logic
     if (pasteYoutubeUrlBtn && youtubeUrlInput) {
-        pasteYoutubeUrlBtn.onclick = () => navigator.clipboard.readText().then(t => {
-            youtubeUrlInput.value = t;
+        pasteYoutubeUrlBtn.onclick = () => navigator.clipboard.readText().then(clipboardText => {
+            youtubeUrlInput.value = clipboardText;
             // Dispatch input event to trigger playlist detection
             youtubeUrlInput.dispatchEvent(new Event('input', { bubbles: true }));
             scheduleYoutubePreview({ immediate: true, showErrors: true });
@@ -4204,7 +4363,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Delete all buttons with confirmation
     if (clearYoutubeDownloadsBtn && youtubeDownloadLinksArea) {
         clearYoutubeDownloadsBtn.onclick = async () => {
-            const confirmed = await confirmDelete('Remove all items from the list and stop unfinished downloads? Completed files will be kept.', 'Clear All Downloads');
+            const confirmed = await confirmDelete(t('Remove all items from the list and stop unfinished downloads? Completed files will be kept.'), t('Clear All Downloads'));
             if (confirmed) {
                 clearYoutubeDownloadsBtn.disabled = true;
                 try {
@@ -4233,9 +4392,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const completedItems = Array.from(downloadItemsState.values()).filter(item => item.status === 'complete').length;
         const pausedItems = Array.from(downloadItemsState.values()).filter(item => item.status === 'paused').length;
 
-        if (queuedCount) queuedCount.textContent = queuedItems;
-        if (downloadingCount) downloadingCount.textContent = downloadingItems;
-        if (downloadedCount) downloadedCount.textContent = completedItems;
+        if (queuedCount) queuedCount.textContent = t.formatNumber(queuedItems);
+        if (downloadingCount) downloadingCount.textContent = t.formatNumber(downloadingItems);
+        if (downloadedCount) downloadedCount.textContent = t.formatNumber(completedItems);
         [[queuedCount, queuedItems], [downloadingCount, downloadingItems], [downloadedCount, completedItems]]
             .forEach(([counter, value]) => counter?.closest('.stat-item')?.classList.toggle('is-active', value > 0));
 
@@ -4347,9 +4506,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatSpeedDisplay(kbps) {
         if (kbps === 0) return '∞';
         if (kbps >= 1000) {
-            return (kbps / 1000).toFixed(0) + ' MB/s';
+            return formatFixed(kbps / 1000, 0) + ' MB/s';
         }
-        return kbps + ' KB/s';
+        return t.formatNumber(kbps) + ' KB/s';
     }
 
     if (headerSpeedSlider && speedValue) {
@@ -4514,7 +4673,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (hasRunSetupHealth && latestSetupHealthResult) {
         renderSetupHealthResult(latestSetupHealthResult);
     } else {
-        renderSetupHealthLoading('Run the setup health check to verify your local downloader setup.');
+        renderSetupHealthLoading(t('Run the setup health check to verify your local downloader setup.'));
     }
 
     // ===== HISTORY SUB-TABS =====
@@ -4553,12 +4712,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!historySummaryPrimary || !historySummaryTertiary) return;
 
         if (activeTabKey === 'youtubePlaylists') {
-            historySummaryPrimary.textContent = `${playlistCount} ${playlistCount === 1 ? 'playlist' : 'playlists'}`;
-            historySummaryTertiary.textContent = `${playlistVideoCount} ${playlistVideoCount === 1 ? 'video total' : 'videos total'}`;
+            historySummaryPrimary.textContent = t.plural(playlistCount, '{count} playlist', '{count} playlists');
+            historySummaryTertiary.textContent = t.plural(playlistVideoCount, '{count} video total', '{count} videos total');
             return;
         }
 
-        historySummaryPrimary.textContent = `${singlesCount} ${singlesCount === 1 ? 'video' : 'videos'}`;
+        historySummaryPrimary.textContent = t.plural(singlesCount, '{count} video', '{count} videos');
         historySummaryTertiary.textContent = '';
     }
 
@@ -4829,7 +4988,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!historySearchTerm) return items;
         return items.filter(item => {
             const title = item.name.toLowerCase();
-            const meta = new Date(item.mtime).toLocaleString().toLowerCase();
+            const meta = formatHistoryFullTimestamp(item.mtime).toLowerCase();
             return title.includes(historySearchTerm) || meta.includes(historySearchTerm);
         });
     }
@@ -4873,7 +5032,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!playlistGroups.has(item.playlistId)) {
                     playlistGroups.set(item.playlistId, {
                         isFolder: true,
-                        name: item.playlistTitle || 'Playlist',
+                        name: item.playlistTitle || t('Playlist'),
                         playlistId: item.playlistId,
                         folder: item.folder,
                         mtime: item.mtime,
@@ -4943,7 +5102,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatHistoryTimestamp(value) {
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return '';
-        return date.toLocaleDateString(undefined, { dateStyle: 'medium' });
+        return t.formatDate(date, { dateStyle: 'medium' });
+    }
+
+    function formatHistoryFullTimestamp(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        return t.formatDate(date, { dateStyle: 'short', timeStyle: 'medium' });
     }
 
     async function createHistoryItemElement(item, index, rootFolder) {
@@ -4990,9 +5155,15 @@ document.addEventListener('DOMContentLoaded', () => {
             let thumbnailSrc = item.thumbnail || LOCAL_THUMBNAIL_PLACEHOLDER;
             const escapedThumbnailSrc = escapeHtml(thumbnailSrc);
             const escapedName = escapeHtml(item.name);
-            const escapedMissingSuffix = !fileExists ? '<span class="history-missing-badge">Missing</span>' : '';
+            const escapedMissingSuffix = !fileExists ? `<span class="history-missing-badge">${escapeHtml(t('Missing'))}</span>` : '';
             const escapedMtime = escapeHtml(formatHistoryTimestamp(item.mtime));
-            const escapedMtimeFull = escapeHtml(new Date(item.mtime).toLocaleString());
+            const escapedMtimeFull = escapeHtml(formatHistoryFullTimestamp(item.mtime));
+            const playTitle = escapeHtml(t('Play Video'));
+            const playLabel = escapeHtml(t('Play video'));
+            const folderTitle = escapeHtml(t('Open Folder'));
+            const folderLabel = escapeHtml(t('Open folder'));
+            const deleteTitle = escapeHtml(t('Delete File'));
+            const deleteLabel = escapeHtml(t('Delete file'));
             const escapedSize = escapeHtml(item.size);
             const escapedAbsPath = escapeHtml(absPath);
             const escapedHistoryItemRoot = escapeHtml(historyItemRoot);
@@ -5014,13 +5185,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="history-meta-row">
                             <div class="history-meta">${escapedMissingSuffix}<span title="${escapedMtimeFull}">${escapedMtime}</span><span class="history-meta-dot" aria-hidden="true">·</span><span>${escapedSize}</span></div>
                             <div class="history-actions">
-                                <button class="history-action-btn play" title="Play Video" aria-label="Play video" data-action="play" data-root="${escapedHistoryItemRoot}" data-path="${escapedAbsPath}" data-index="${index}" ${!fileExists ? 'disabled' : ''}>
+                                <button class="history-action-btn play" title="${playTitle}" aria-label="${playLabel}" data-action="play" data-root="${escapedHistoryItemRoot}" data-path="${escapedAbsPath}" data-index="${index}" ${!fileExists ? 'disabled' : ''}>
                                     <i class="fas fa-play"></i>
                                 </button>
-                                <button class="history-action-btn folder" title="Open Folder" aria-label="Open folder" data-action="folder" data-root="${escapedHistoryItemRoot}" data-path="${escapedContainingFolder}" data-index="${index}" ${!containingFolderExists ? 'disabled' : ''}>
+                                <button class="history-action-btn folder" title="${folderTitle}" aria-label="${folderLabel}" data-action="folder" data-root="${escapedHistoryItemRoot}" data-path="${escapedContainingFolder}" data-index="${index}" ${!containingFolderExists ? 'disabled' : ''}>
                                     <i class="fas fa-folder-open"></i>
                                 </button>
-                                <button class="history-action-btn delete" title="Delete File" aria-label="Delete file" data-action="delete" data-root="${escapedHistoryItemRoot}" data-path="${escapedAbsPath}" data-index="${index}">
+                                <button class="history-action-btn delete" title="${deleteTitle}" aria-label="${deleteLabel}" data-action="delete" data-root="${escapedHistoryItemRoot}" data-path="${escapedAbsPath}" data-index="${index}">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -5069,10 +5240,10 @@ document.addEventListener('DOMContentLoaded', () => {
             folderDiv.dataset.playlistId = folderItem.playlistId; // Store playlistId for folder deletion
 
             const videoCount = folderItem.videoCount || (folderItem.videos ? folderItem.videos.length : 0);
-            const folderName = folderItem.name || 'Playlist Folder';
+            const folderName = folderItem.name || t('Playlist Folder');
             const escapedFolderName = escapeHtml(folderName);
             const escapedFolderMtime = escapeHtml(formatHistoryTimestamp(folderItem.mtime));
-            const escapedFolderMtimeFull = escapeHtml(new Date(folderItem.mtime).toLocaleString());
+            const escapedFolderMtimeFull = escapeHtml(formatHistoryFullTimestamp(folderItem.mtime));
             const escapedFolderSize = escapeHtml(folderItem.size);
 
             folderDiv.innerHTML = `
@@ -5085,7 +5256,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="history-title">${escapedFolderName}</div>
                         <div class="history-meta"><span title="${escapedFolderMtimeFull}">${escapedFolderMtime}</span>${escapedFolderSize ? `<span class="history-meta-dot" aria-hidden="true">·</span><span>${escapedFolderSize}</span>` : ''}</div>
                     </div>
-                    <span class="history-folder-count">${videoCount} video${videoCount !== 1 ? 's' : ''}</span>
+                    <span class="history-folder-count">${escapeHtml(t.plural(videoCount, '{count} video', '{count} videos'))}</span>
                 </div>
                 <div class="history-folder-content"></div>
             `;
@@ -5124,14 +5295,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // Toggle on click of the toggle button OR the header
             const toggleBtn = folderDiv.querySelector('.history-folder-toggle');
             if (toggleBtn) {
-                toggleBtn.setAttribute('aria-label', `Toggle ${folderName}`);
+                toggleBtn.setAttribute('aria-label', t('Toggle {name}', { name: folderName }));
                 toggleBtn.addEventListener('click', toggleExpansion);
             }
             header.addEventListener('click', toggleExpansion);
             makeElementKeyboardClickable(header, () => toggleExpansion({
                 target: header,
                 stopPropagation() { }
-            }), `Toggle ${folderName}`);
+            }), t('Toggle {name}', { name: folderName }));
 
 
             if (!folderExists) {
@@ -5168,7 +5339,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateItemCount(count) {
         const itemCountEl = document.getElementById('itemCount');
         if (itemCountEl) {
-            itemCountEl.textContent = `${count} item${count !== 1 ? 's' : ''}`;
+            itemCountEl.textContent = t.plural(count, '{count} item', '{count} items');
         }
     }
 
@@ -5181,7 +5352,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (bulkSelectionMode) {
             if (bulkActionsDiv) bulkActionsDiv.style.display = 'flex';
             if (bulkSelectBtn) {
-                bulkSelectBtn.innerHTML = '<i class="fas fa-times"></i> Exit Bulk';
+                bulkSelectBtn.innerHTML = `<i class="fas fa-times"></i> ${escapeHtml(t('Exit Bulk'))}`;
                 bulkSelectBtn.classList.add('danger-btn');
             }
             if (clearHistoryBtn) clearHistoryBtn.style.display = 'none';
@@ -5189,7 +5360,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             if (bulkActionsDiv) bulkActionsDiv.style.display = 'none';
             if (bulkSelectBtn) {
-                bulkSelectBtn.innerHTML = '<i class="fas fa-check-square"></i> Bulk Select';
+                bulkSelectBtn.innerHTML = `<i class="fas fa-check-square"></i> ${escapeHtml(t('Bulk Select'))}`;
                 bulkSelectBtn.classList.remove('danger-btn');
             }
             if (clearHistoryBtn) clearHistoryBtn.style.display = '';
@@ -5397,7 +5568,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             const count = visibleCheckboxes.length;
-            countSpan.textContent = `${count} selected`;
+            countSpan.textContent = t('{count} selected', { count: t.formatNumber(count) });
         }
         // Update Select All button state - only checkboxes in the active tab
         const activeList = document.querySelector('.history-list.active, .history-list[style*="grid"]');
@@ -5461,9 +5632,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const icon = selectAllBtn.querySelector('i');
         if (allSelected) {
-            selectAllBtn.innerHTML = '<i class="fas fa-square"></i> Deselect All';
+            selectAllBtn.innerHTML = `<i class="fas fa-square"></i> ${escapeHtml(t('Deselect All'))}`;
         } else {
-            selectAllBtn.innerHTML = '<i class="fas fa-check-square"></i> Select All';
+            selectAllBtn.innerHTML = `<i class="fas fa-check-square"></i> ${escapeHtml(t('Select All'))}`;
         }
     }
 
@@ -5499,11 +5670,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!activeTabBtn) return;
 
                 const type = activeTabBtn.dataset.history;
-                let typeLabel = 'Video Singles';
-                if (type === 'youtubePlaylists') typeLabel = 'Video Playlists';
+                const isPlaylistTab = type === 'youtubePlaylists';
 
                 // Show custom 3-button modal
-                const result = await showClearHistoryModal(typeLabel);
+                const result = await showClearHistoryModal(isPlaylistTab);
 
                 if (result === 'cancel') return;
 
@@ -5512,7 +5682,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (result === 'clearAll') {
                     // Clear all history
                     persistStoredHistory([]);
-                    showNotification('All history cleared.', 'success');
+                    showNotification(t('All history cleared.'), 'success');
                 } else if (result === 'clearTab') {
                     // Clear only current tab - filter out items that belong to current tab
                     history = history.filter(item => {
@@ -5526,19 +5696,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     });
                     persistStoredHistory(history);
-                    showNotification(`${typeLabel} history cleared.`, 'success');
+                    showNotification(isPlaylistTab ? t('Video Playlists history cleared.') : t('Video Singles history cleared.'), 'success');
                 }
             });
         }
     }
 
     // Custom 3-button clear history modal
-    function showClearHistoryModal(tabName) {
+    function showClearHistoryModal(isPlaylistTab) {
         return new Promise((resolve) => {
             // Remove existing modal if any
             const existing = document.getElementById('clearHistoryModal');
             if (existing) existing.remove();
-            const escapedTabName = escapeHtml(tabName);
+            const clearTabTitle = escapeHtml(isPlaylistTab ? t('Clear Video Playlists') : t('Clear Video Singles'));
+            const clearTabDesc = escapeHtml(isPlaylistTab ? t('Remove video playlists only') : t('Remove video singles only'));
 
             const modal = document.createElement('div');
             modal.id = 'clearHistoryModal';
@@ -5560,29 +5731,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="confirmation-icon">
                         <i class="fas fa-trash-alt"></i>
                     </div>
-                    <h2 class="clear-history-title">Clear History</h2>
+                    <h2 class="clear-history-title">${escapeHtml(t('Clear History'))}</h2>
                     <p class="clear-history-text">
-                        What would you like to clear?<br>
-                        <small>This action cannot be undone.</small>
+                        ${escapeHtml(t('What would you like to clear?'))}<br>
+                        <small>${escapeHtml(t('This action cannot be undone.'))}</small>
                     </p>
                     <div class="close-actions-grid">
                         <button id="clearTabBtn" class="action-btn primary-btn-glow">
                             <i class="fas fa-folder-minus"></i>
                             <div>
-                                <span class="btn-title">Clear ${escapedTabName}</span>
-                                <span class="btn-desc">Remove ${escapeHtml(String(tabName).toLowerCase())} only</span>
+                                <span class="btn-title">${clearTabTitle}</span>
+                                <span class="btn-desc">${clearTabDesc}</span>
                             </div>
                         </button>
                         <button id="clearAllBtn" class="action-btn danger-btn-outline">
                             <i class="fas fa-trash"></i>
                             <div>
-                                <span class="btn-title">Clear All</span>
-                                <span class="btn-desc">Remove entire history</span>
+                                <span class="btn-title">${escapeHtml(t('Clear All'))}</span>
+                                <span class="btn-desc">${escapeHtml(t('Remove entire history'))}</span>
                             </div>
                         </button>
                     </div>
                     <div class="close-cancel-row">
-                        <button id="cancelClearBtn" class="text-btn">Cancel</button>
+                        <button id="cancelClearBtn" class="text-btn">${escapeHtml(t('Cancel'))}</button>
                     </div>
                 </div>
             `;
@@ -5701,15 +5872,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (visibleCheckedItems.length === 0) {
-            await showAlert('No items selected for deletion.', 'No Selection');
+            await showAlert(t('No items selected for deletion.'), t('No Selection'));
             return;
         }
 
         // Get the original indices from the checked items
         const indicesToDelete = visibleCheckedItems.map(cb => parseInt(cb.dataset.originalIndex)).filter(idx => idx >= 0);
 
-        const confirmMessage = `Delete ${indicesToDelete.length} selected item${indicesToDelete.length !== 1 ? 's' : ''} permanently?`;
-        const confirmed = await confirmDelete(confirmMessage, 'Delete Selected Items');
+        const confirmMessage = t.plural(indicesToDelete.length, 'Delete {count} selected item permanently?', 'Delete {count} selected items permanently?');
+        const confirmed = await confirmDelete(confirmMessage, t('Delete Selected Items'));
         if (!confirmed) return;
 
         const history = readStoredHistory();
@@ -5841,10 +6012,15 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedHistoryItems.clear();
         toggleBulkSelectionMode();
         filterAndRenderHistory();
-        const message = deletedCount > 0
-            ? `Successfully deleted ${deletedCount} item${deletedCount !== 1 ? 's' : ''} and removed ${removedCount} item${removedCount !== 1 ? 's' : ''} from history.`
-            : `Removed ${removedCount} item${removedCount !== 1 ? 's' : ''} from history.`;
-        await showAlert(message, 'Deletion Complete');
+        let message;
+        if (deletedCount === 1) {
+            message = t.plural(removedCount, 'Successfully deleted {deleted} item and removed {count} item from history.', 'Successfully deleted {deleted} item and removed {count} items from history.', { deleted: deletedCount });
+        } else if (deletedCount > 1) {
+            message = t.plural(removedCount, 'Successfully deleted {deleted} items and removed {count} item from history.', 'Successfully deleted {deleted} items and removed {count} items from history.', { deleted: deletedCount });
+        } else {
+            message = t.plural(removedCount, 'Removed {count} item from history.', 'Removed {count} items from history.');
+        }
+        await showAlert(message, t('Deletion Complete'));
     }
 
     // clearHistoryBtn is now handled by setupClearHistoryButton() with 3-button modal
@@ -5863,22 +6039,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.electronAPI?.openMediaFile) {
                 const result = await window.electronAPI.openMediaFile(rootPath, filePath);
                 if (!result?.success) {
-                    await showAlert(`Unable to play this video: ${result?.error || 'Unknown error'}`, 'Playback Failed');
+                    await showAlert(t('Unable to play this video: {error}', { error: serverError(result, t('Unknown error')) }), t('Playback Failed'));
                 }
             } else {
-                await showAlert('Video playback is only available in the desktop app.', 'Not Available');
+                await showAlert(t('Video playback is only available in the desktop app.'), t('Not Available'));
             }
         } else if (action === 'folder') {
             if (window.electronAPI?.openPathInExplorer) {
                 const result = await window.electronAPI.openPathInExplorer(rootPath, filePath);
                 if (!result?.success) {
-                    await showAlert(`Unable to open this folder: ${result?.error || 'Unknown error'}`, 'Open Folder Failed');
+                    await showAlert(t('Unable to open this folder: {error}', { error: serverError(result, t('Unknown error')) }), t('Open Folder Failed'));
                 }
             } else {
-                await showAlert('Opening folders is only available in the desktop app.', 'Not Available');
+                await showAlert(t('Opening folders is only available in the desktop app.'), t('Not Available'));
             }
         } else if (action === 'delete') {
-            const confirmed = await confirmDelete('Are you sure you want to delete this file?', 'Delete File');
+            const confirmed = await confirmDelete(t('Are you sure you want to delete this file?'), t('Delete File'));
             if (confirmed) {
                 try {
                     if (window.electronAPI?.deleteFile) {
@@ -5893,12 +6069,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                 persistStoredHistory(history);
                             }
                         } else {
-                            await showAlert('Failed to delete file: ' + (result.error || 'Unknown error'), 'Deletion Failed');
+                            await showAlert(t('Failed to delete file: {error}', { error: serverError(result, t('Unknown error')) }), t('Deletion Failed'));
                         }
                     }
                 } catch (error) {
                     console.error('Error deleting file:', error);
-                    await showAlert('Error deleting file: ' + error.message, 'Error');
+                    await showAlert(t('Error deleting file: {error}', { error: error.message }), t('Error'));
                 }
             }
         }
@@ -5963,18 +6139,17 @@ const UPDATE_LAST_SEEN_KEY = 'gvl_lastSeenVersion';
 const UPDATE_POPUP_DELAY_MS = 2500;
 // The server stamps the running version into <html data-app-version>; this is
 // only a fallback. Keep the changelog below in step with each release.
-const DEFAULT_APP_VERSION = '3.2.12';
+const DEFAULT_APP_VERSION = '3.2.13';
 const FALLBACK_APP_CHANGELOG = {
-    version: '3.2.12',
-    title: "What's new in 3.2.12",
+    version: '3.2.13',
+    title: t("What's new in {version}", { version: '3.2.13' }),
     date: 'November 2026',
     required: false,
     badge: '',
     summary: '',
     items: [
-        { icon: 'fa-arrows-rotate', title: 'One-click updates', desc: 'New versions download by themselves. When you see Restart to update, click it. Your settings and history stay as they are. You can also check any time in Settings → About.' },
-        { icon: 'fa-display', title: 'Looks right on big screens', desc: 'Downloads and History make better use of large monitors, and the Speed limit setting is no longer squashed.' },
-        { icon: 'fa-shield-halved', title: 'Settings kept safe', desc: 'The app keeps a backup copy of your settings, so they are not lost.' }
+        { icon: 'fa-language', title: t('Now in 41 languages'), desc: t('Pick your language in Settings → General → Appearance.') },
+        { icon: 'fa-font', title: t('Made for every script'), desc: t('Arabic, Hebrew, Persian and Urdu read right to left, and every language gets a clear font made for its script.') }
     ]
 };
 let updatePopupTimer = null;
@@ -5994,13 +6169,13 @@ function getValidAppChangelog() {
         .filter(item => item && typeof item === 'object')
         .map((item) => ({
             icon: String(item.icon || 'fa-circle-info'),
-            title: String(item.title || 'Update'),
-            desc: String(item.desc || 'Latest improvements are now available.')
+            title: String(item.title || t('Update')),
+            desc: String(item.desc || t('Latest improvements are now available.'))
         }));
 
     return {
         version: String(changelog.version || getCurrentAppVersion()),
-        title: String(changelog.title || `What's New in v${getCurrentAppVersion()}`),
+        title: String(changelog.title || t("What's New in v{version}", { version: getCurrentAppVersion() })),
         date: String(changelog.date || ''),
         required: changelog.required === true,
         badge: String(changelog.badge || ''),
@@ -6075,17 +6250,17 @@ function showUpdatePopup(changelog, version, storageKey) {
         </div>
     `).join('');
     const requiredBadgeHtml = changelog.required
-        ? `<span class="update-required-badge">${changelog.badge || 'Required'}</span>`
+        ? `<span class="update-required-badge">${changelog.badge || escapeHtml(t('Required'))}</span>`
         : '';
     const summaryHtml = changelog.summary
         ? `<p class="onboarding-step-subtitle update-summary">${changelog.summary}</p>`
-        : `<p class="onboarding-step-subtitle">You've been updated to version ${version}. Here's what's new.</p>`;
+        : `<p class="onboarding-step-subtitle">${escapeHtml(t("You've been updated to version {version}. Here's what's new.", { version }))}</p>`;
 
     content.innerHTML = `
         <div class="onboarding-progress-bar">
             <div class="onboarding-progress-fill update-progress-fill"></div>
         </div>
-        <button class="onboarding-close-btn update-close-btn" id="updateCloseBtn" type="button" aria-label="Close what's new">
+        <button class="onboarding-close-btn update-close-btn" id="updateCloseBtn" type="button" aria-label="${escapeHtml(t("Close what's new"))}">
             <i class="fas fa-times" aria-hidden="true"></i>
         </button>
         <div class="onboarding-scroll-area">
@@ -6110,6 +6285,10 @@ function showUpdatePopup(changelog, version, storageKey) {
             </div>
         </div>
     `;
+
+    // The template keeps the English label; swap in the translation here.
+    const dismissButton = document.getElementById('updateDismissBtn');
+    if (dismissButton) dismissButton.textContent = t('Got it');
 
     modal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
@@ -6194,11 +6373,11 @@ function initOnboarding() {
     const TOTAL_STEPS = 5;
 
     const steps = [
-        { id: 'welcome' },
-        { id: 'location' },
-        { id: 'format' },
-        { id: 'notifications' },
-        { id: 'complete' }
+        { id: 'welcome', label: t('Go to welcome step') },
+        { id: 'location', label: t('Go to location step') },
+        { id: 'format', label: t('Go to format step') },
+        { id: 'notifications', label: t('Go to notifications step') },
+        { id: 'complete', label: t('Go to complete step') }
     ];
 
     function flashHighlight(element, duration = 1500) {
@@ -6216,7 +6395,7 @@ function initOnboarding() {
             onboardingState.downloadFolder = saved;
             return saved;
         }
-        return 'Downloads folder';
+        return t('Downloads folder');
     }
 
     function persistOnboardingSettings(settingsPatch) {
@@ -6236,14 +6415,14 @@ function initOnboarding() {
     function getQualityOptions(format) {
         return ['mp4', 'mkv'].includes(format)
             ? [
-                ['highest', 'Best available (up to 8K)'],
+                ['highest', t('Best available (up to 8K)')],
                 ['2160', '4K (2160p)'],
                 ['1440', '2K (1440p)'],
                 ['1080', 'Full HD (1080p)'],
                 ['720', 'HD (720p)']
             ]
             : [
-                ['highest', 'Highest quality'],
+                ['highest', t('Highest quality')],
                 ['320', '320 kbps'],
                 ['256', '256 kbps'],
                 ['192', '192 kbps']
@@ -6291,7 +6470,7 @@ function initOnboarding() {
             const label = index < activeIndex
                 ? '<i class="fas fa-check" aria-hidden="true"></i>'
                 : String(index + 1);
-            return `<button class="setup-step-pill onboarding-step-dot ${stateClass}" type="button" data-step="${index}" aria-label="Go to ${step.id} step" ${index > activeIndex ? 'disabled' : ''}>${label}</button>`;
+            return `<button class="setup-step-pill onboarding-step-dot ${stateClass}" type="button" data-step="${index}" aria-label="${escapeOnboardingText(step.label)}" ${index > activeIndex ? 'disabled' : ''}>${label}</button>`;
         }).join('');
     }
 
@@ -6300,16 +6479,16 @@ function initOnboarding() {
             <div class="setup-shell">
                 <header class="setup-header">
                     <img class="setup-brand-logo" src="/public/Logo1.ico" alt="GetVideosLocally" />
-                    <div class="setup-progress" aria-label="Setup progress">
+                    <div class="setup-progress" aria-label="${escapeOnboardingText(t('Setup progress'))}">
                         ${renderSetupProgress(index)}
                     </div>
-                    <button class="setup-close onboarding-close-btn" type="button" aria-label="Close setup">
+                    <button class="setup-close onboarding-close-btn" type="button" aria-label="${escapeOnboardingText(t('Close setup'))}">
                         <i class="fas fa-xmark" aria-hidden="true"></i>
                     </button>
                 </header>
                 <main class="setup-main">
                     <section class="setup-copy">
-                        <p class="setup-kicker">Step ${index + 1} of ${TOTAL_STEPS}</p>
+                        <p class="setup-kicker">${escapeOnboardingText(t('Step {step} of {total}', { step: t.formatNumber(index + 1), total: t.formatNumber(TOTAL_STEPS) }))}</p>
                         <h2 class="setup-title">${title}</h2>
                         <p class="setup-subtitle">${subtitle}</p>
                         <div class="setup-body">${body}</div>
@@ -6320,7 +6499,7 @@ function initOnboarding() {
                     </div>
                 </main>
                 <footer class="setup-footer">
-                    <span class="setup-footer-note">You can change these options later in Settings.</span>
+                    <span class="setup-footer-note">${escapeOnboardingText(t('You can change these options later in Settings.'))}</span>
                     <div class="setup-actions">${actions}</div>
                 </footer>
             </div>
@@ -6330,17 +6509,17 @@ function initOnboarding() {
     function renderWelcome() {
         const body = `
             <div class="setup-feature-list">
-                <span><i class="fas fa-bolt"></i> Fast downloads with yt-dlp and FFmpeg</span>
-                <span><i class="fas fa-shield-halved"></i> Private processing on your computer</span>
-                <span><i class="fas fa-film"></i> Video, audio, playlists, and batch downloads</span>
+                <span><i class="fas fa-bolt"></i> ${escapeOnboardingText(t('Fast downloads with yt-dlp and FFmpeg'))}</span>
+                <span><i class="fas fa-shield-halved"></i> ${escapeOnboardingText(t('Private processing on your computer'))}</span>
+                <span><i class="fas fa-film"></i> ${escapeOnboardingText(t('Video, audio, playlists, and batch downloads'))}</span>
             </div>`;
         const actions = `
-            <button class="setup-btn setup-btn-ghost" data-action="skip">Skip setup</button>
-            <button class="setup-btn setup-btn-primary" data-action="next">Get started <i class="fas fa-arrow-right"></i></button>`;
+            <button class="setup-btn setup-btn-ghost" data-action="skip">${escapeOnboardingText(t('Skip setup'))}</button>
+            <button class="setup-btn setup-btn-primary" data-action="next">${escapeOnboardingText(t('Get started'))} <i class="fas fa-arrow-right"></i></button>`;
         return renderSetupShell({
             index: 0,
-            title: 'Welcome to GetVideosLocally',
-            subtitle: 'Download videos and audio from more than 1,000 supported sites—fast, private, and entirely on your computer.',
+            title: escapeOnboardingText(t('Welcome to GetVideosLocally')),
+            subtitle: escapeOnboardingText(t('Download videos and audio from more than {count} supported sites—fast, private, and entirely on your computer.', { count: t.formatNumber(1000) })),
             visualIcon: 'fa-play',
             body,
             actions
@@ -6352,21 +6531,21 @@ function initOnboarding() {
         const shortFolder = shortenPath(currentFolder);
         const body = `
             <div class="setup-form-group">
-                <label for="onboardingFolder">Download location</label>
+                <label for="onboardingFolder">${escapeOnboardingText(t('Download location'))}</label>
                 <div class="setup-folder-row">
                     <div class="setup-path-field"><i class="far fa-folder"></i><input type="text" id="onboardingFolder" readonly value="${escapeOnboardingText(shortFolder)}" /></div>
-                    <button class="setup-btn setup-btn-outline" id="onboardingChooseFolder" type="button"><i class="far fa-folder-open"></i> Choose</button>
+                    <button class="setup-btn setup-btn-outline" id="onboardingChooseFolder" type="button"><i class="far fa-folder-open"></i> ${escapeOnboardingText(t('Choose'))}</button>
                 </div>
             </div>
-            <div class="setup-tip"><i class="fas fa-circle-info"></i><span>We'll create the folder for you if it doesn't exist yet.</span></div>
+            <div class="setup-tip"><i class="fas fa-circle-info"></i><span>${escapeOnboardingText(t("We'll create the folder for you if it doesn't exist yet."))}</span></div>
             <p class="setup-location-status" id="onboardingFolderStatus" aria-live="polite"></p>`;
         const actions = `
             <button class="setup-btn setup-btn-outline" data-action="prev"><i class="fas fa-arrow-left"></i> Back</button>
             <button class="setup-btn setup-btn-primary" data-action="next">Continue <i class="fas fa-arrow-right"></i></button>`;
         return renderSetupShell({
             index: 1,
-            title: 'Where should we save your downloads?',
-            subtitle: 'Choose a folder on your computer. You can always change this later in Settings.',
+            title: escapeOnboardingText(t('Where should we save your downloads?')),
+            subtitle: escapeOnboardingText(t('Choose a folder on your computer. You can always change this later in Settings.')),
             visualIcon: 'fa-folder-open',
             body,
             actions
@@ -6380,29 +6559,29 @@ function initOnboarding() {
             ? onboardingState.quality
             : qualityOptions[0][0];
         const formats = [
-            ['mp4', 'fa-film', 'MP4 Video', 'Best compatibility'],
-            ['mp3', 'fa-music', 'MP3 Audio', 'Music and podcasts'],
-            ['mkv', 'fa-file-video', 'MKV Video', 'Multi-track video'],
-            ['flac', 'fa-headphones', 'FLAC Audio', 'Lossless audio']
+            ['mp4', 'fa-film', t('MP4 Video'), t('Best compatibility')],
+            ['mp3', 'fa-music', t('MP3 Audio'), t('Music and podcasts')],
+            ['mkv', 'fa-file-video', t('MKV Video'), t('Multi-track video')],
+            ['flac', 'fa-headphones', t('FLAC Audio'), t('Lossless audio')]
         ];
         const body = `
             <div class="setup-format-grid" id="onboardingFormatChoices">
                 ${formats.map(([format, icon, label, description]) => `
                     <button class="setup-format-option onboarding-choice-card ${currentFormat === format ? 'selected' : ''}" type="button" data-format="${format}">
                         <i class="fas ${icon}"></i>
-                        <span><strong>${label}</strong><small>${description}</small></span>
+                        <span><strong>${escapeOnboardingText(label)}</strong><small>${escapeOnboardingText(description)}</small></span>
                         <i class="fas fa-circle-check setup-option-check"></i>
                     </button>`).join('')}
             </div>
             <div class="setup-quality-row">
-                <label for="onboardingQuality">Preferred quality</label>
+                <label for="onboardingQuality">${escapeOnboardingText(t('Preferred quality'))}</label>
                 <select id="onboardingQuality">
-                    ${qualityOptions.map(([quality, label]) => `<option value="${quality}" ${selectedQuality === quality ? 'selected' : ''}>${label}</option>`).join('')}
+                    ${qualityOptions.map(([quality, label]) => `<option value="${quality}" ${selectedQuality === quality ? 'selected' : ''}>${escapeOnboardingText(label)}</option>`).join('')}
                 </select>
             </div>
             <div class="setup-toggle-list setup-remember-choices">
                 <label class="setup-toggle-row">
-                    <span class="setup-toggle-copy"><i class="fas fa-clock-rotate-left"></i><span><strong>Remember my last choices</strong><small>Keep the format, quality and concurrent downloads you last used. When off, every launch starts with the choices above.</small></span></span>
+                    <span class="setup-toggle-copy"><i class="fas fa-clock-rotate-left"></i><span><strong>${escapeOnboardingText(t('Remember my last choices'))}</strong><small>${escapeOnboardingText(t('Keep the format, quality and concurrent downloads you last used. When off, every launch starts with the choices above.'))}</small></span></span>
                     <span class="setup-switch"><input type="checkbox" id="onboardingRememberChoices" ${onboardingState.rememberChoices ? 'checked' : ''}><span></span></span>
                 </label>
             </div>`;
@@ -6411,8 +6590,8 @@ function initOnboarding() {
             <button class="setup-btn setup-btn-primary" data-action="next">Continue <i class="fas fa-arrow-right"></i></button>`;
         return renderSetupShell({
             index: 2,
-            title: 'What do you download most?',
-            subtitle: 'Choose your default format. You can switch formats for any download later.',
+            title: escapeOnboardingText(t('What do you download most?')),
+            subtitle: escapeOnboardingText(t('Choose your default format. You can switch formats for any download later.')),
             visualIcon: 'fa-sliders',
             body,
             actions
@@ -6425,11 +6604,11 @@ function initOnboarding() {
         const body = `
             <div class="setup-toggle-list">
                 <label class="setup-toggle-row">
-                    <span class="setup-toggle-copy"><i class="fas fa-volume-high"></i><span><strong>Sound alerts</strong><small>Play a sound when downloads complete</small></span></span>
+                    <span class="setup-toggle-copy"><i class="fas fa-volume-high"></i><span><strong>${escapeOnboardingText(t('Sound alerts'))}</strong><small>${escapeOnboardingText(t('Play a sound when downloads complete'))}</small></span></span>
                     <span class="setup-switch"><input type="checkbox" id="onboardingSoundToggle" ${soundEnabled ? 'checked' : ''}><span></span></span>
                 </label>
                 <label class="setup-toggle-row">
-                    <span class="setup-toggle-copy"><i class="fas fa-desktop"></i><span><strong>Desktop notifications</strong><small>Show a system notification when done</small></span></span>
+                    <span class="setup-toggle-copy"><i class="fas fa-desktop"></i><span><strong>${escapeOnboardingText(t('Desktop notifications'))}</strong><small>${escapeOnboardingText(t('Show a system notification when done'))}</small></span></span>
                     <span class="setup-switch"><input type="checkbox" id="onboardingDesktopToggle" ${desktopEnabled ? 'checked' : ''}><span></span></span>
                 </label>
             </div>`;
@@ -6438,8 +6617,8 @@ function initOnboarding() {
             <button class="setup-btn setup-btn-primary" data-action="next">Continue <i class="fas fa-arrow-right"></i></button>`;
         return renderSetupShell({
             index: 3,
-            title: 'Stay in the loop',
-            subtitle: 'Choose how GetVideosLocally should let you know when a download finishes.',
+            title: escapeOnboardingText(t('Stay in the loop')),
+            subtitle: escapeOnboardingText(t('Choose how GetVideosLocally should let you know when a download finishes.')),
             visualIcon: 'fa-bell',
             body,
             actions
@@ -6447,28 +6626,30 @@ function initOnboarding() {
     }
 
     function renderComplete() {
-        const formatLabels = { mp4: 'MP4 Video', mp3: 'MP3 Audio', mkv: 'MKV Video', flac: 'FLAC Audio', wav: 'WAV Audio', m4a: 'M4A Audio', opus: 'Opus Audio', webm: 'WEBM Video', mov: 'MOV Video' };
-        const formatLabel = formatLabels[onboardingState.format] || onboardingState.format.toUpperCase();
-        const qualityLabel = getQualityOptions(onboardingState.format)
-            .find(([quality]) => quality === onboardingState.quality)?.[1] || 'Highest quality';
+        const formatLabels = { mp4: t('MP4 Video'), mp3: t('MP3 Audio'), mkv: t('MKV Video'), flac: t('FLAC Audio'), wav: t('WAV Audio'), m4a: t('M4A Audio'), opus: t('Opus Audio'), webm: t('WEBM Video'), mov: t('MOV Video') };
+        const formatLabel = escapeOnboardingText(formatLabels[onboardingState.format] || onboardingState.format.toUpperCase());
+        const qualityLabel = escapeOnboardingText(getQualityOptions(onboardingState.format)
+            .find(([quality]) => quality === onboardingState.quality)?.[1] || t('Highest quality'));
+        const onLabel = escapeOnboardingText(t('On'));
+        const offLabel = escapeOnboardingText(t('Off'));
         const folder = escapeOnboardingText(shortenPath(onboardingState.downloadFolder || getFolderDisplay(), 35));
         const soundOn = document.getElementById('onboardingSoundToggle')?.checked ?? onboardingState.notifications.sound;
         const desktopOn = document.getElementById('onboardingDesktopToggle')?.checked ?? onboardingState.notifications.desktop;
         const body = `
             <dl class="setup-summary">
-                <div><dt>Download folder</dt><dd>${folder}</dd></div>
-                <div><dt>Default format</dt><dd>${formatLabel}</dd></div>
-                <div><dt>Preferred quality</dt><dd>${qualityLabel}</dd></div>
-                <div><dt>Sound alerts</dt><dd>${soundOn ? 'On' : 'Off'}</dd></div>
-                <div><dt>Desktop notifications</dt><dd>${desktopOn ? 'On' : 'Off'}</dd></div>
+                <div><dt>${escapeOnboardingText(t('Download folder'))}</dt><dd>${folder}</dd></div>
+                <div><dt>${escapeOnboardingText(t('Default format'))}</dt><dd>${formatLabel}</dd></div>
+                <div><dt>${escapeOnboardingText(t('Preferred quality'))}</dt><dd>${qualityLabel}</dd></div>
+                <div><dt>${escapeOnboardingText(t('Sound alerts'))}</dt><dd>${soundOn ? onLabel : offLabel}</dd></div>
+                <div><dt>${escapeOnboardingText(t('Desktop notifications'))}</dt><dd>${desktopOn ? onLabel : offLabel}</dd></div>
             </dl>`;
         const actions = `
             <button class="setup-btn setup-btn-outline" data-action="prev"><i class="fas fa-arrow-left"></i> Back</button>
-            <button class="setup-btn setup-btn-primary" data-action="finish">Start downloading <i class="fas fa-arrow-right"></i></button>`;
+            <button class="setup-btn setup-btn-primary" data-action="finish">${escapeOnboardingText(t('Start downloading'))} <i class="fas fa-arrow-right"></i></button>`;
         return renderSetupShell({
             index: 4,
-            title: "You're all set!",
-            subtitle: 'Your preferences are saved. Paste a video URL to start your first download.',
+            title: escapeOnboardingText(t("You're all set!")),
+            subtitle: escapeOnboardingText(t('Your preferences are saved. Paste a video URL to start your first download.')),
             visualIcon: 'fa-check',
             body,
             actions
@@ -6586,21 +6767,21 @@ function initOnboarding() {
                 };
 
                 if (!window.electronAPI?.openFolderDialog) {
-                    setStatus('The folder picker is unavailable. Restart the desktop app and try again.', 'error');
+                    setStatus(t('The folder picker is unavailable. Restart the desktop app and try again.'), 'error');
                     return;
                 }
 
                 if (chooseButton) {
                     chooseButton.disabled = true;
                     chooseButton.setAttribute('aria-busy', 'true');
-                    chooseButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Choosing';
+                    chooseButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeOnboardingText(t('Choosing'))}`;
                 }
-                setStatus('Waiting for a folder selection…');
+                setStatus(t('Waiting for a folder selection…'));
 
                 try {
                     const selectedFolderPath = await window.electronAPI.openFolderDialog();
                     if (!selectedFolderPath) {
-                        setStatus('No folder selected. Your current location is unchanged.');
+                        setStatus(t('No folder selected. Your current location is unchanged.'));
                         return;
                     }
 
@@ -6611,15 +6792,15 @@ function initOnboarding() {
                         folderInput.value = shortenPath(normalizedFolderPath);
                         folderInput.title = normalizedFolderPath;
                     }
-                    setStatus('Saved to Settings.', 'success');
+                    setStatus(t('Saved to Settings.'), 'success');
                 } catch (folderPickerError) {
                     console.error('Folder selection failed:', folderPickerError);
-                    setStatus('We could not open the folder picker. Please try again.', 'error');
+                    setStatus(t('We could not open the folder picker. Please try again.'), 'error');
                 } finally {
                     if (chooseButton) {
                         chooseButton.disabled = false;
                         chooseButton.removeAttribute('aria-busy');
-                        chooseButton.innerHTML = '<i class="far fa-folder-open"></i> Choose';
+                        chooseButton.innerHTML = `<i class="far fa-folder-open"></i> ${escapeOnboardingText(t('Choose'))}`;
                     }
                 }
             });
@@ -6751,8 +6932,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         window.electronAPI.onShowCloseConfirmation((activeCount) => {
             if (closeConfirmationModal && closeConfirmationMessage) {
                 // Update message with count
-                const countText = activeCount === 1 ? '1 download is' : `${activeCount} downloads are`;
-                closeConfirmationMessage.textContent = `${countText} currently in progress. What would you like to do?`;
+                closeConfirmationMessage.textContent = t.plural(activeCount, '{count} download is currently in progress. What would you like to do?', '{count} downloads are currently in progress. What would you like to do?');
 
                 // Show modal
                 openModalWithFocus(closeConfirmationModal, closeConfirmTrayBtn || closeConfirmCancelBtn);

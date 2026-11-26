@@ -27,6 +27,10 @@ function serverFunction(name, context) {
   assert.ok(start >= 0);
   const rest = source.slice(start);
   const end = rest.slice(1).search(/\n  (?:async )?function /);
+  // server.js wraps window text in tr()/uiMessage() from backend/utils/ui-message.
+  for (const [key, value] of Object.entries(require("../backend/utils/ui-message"))) {
+    if (!(key in context)) context[key] = value;
+  }
   return vm.runInNewContext(`${end < 0 ? rest : rest.slice(0, end + 1)}\n${name}`, context);
 }
 

@@ -8,14 +8,17 @@ const indexHtml = fs.readFileSync(path.join(projectRoot, "index.html"), "utf8");
 const stylesheet = fs.readFileSync(path.join(projectRoot, "style.css"), "utf8");
 
 test("Manrope is the primary app, heading, and header wordmark typeface", () => {
-  assert.match(stylesheet, /body\s*\{[^}]*font-family:\s*'Manrope'/s);
+  // Manrope leads both font stacks; other scripts (Arabic, Devanagari, ...) swap in their own face.
+  assert.match(stylesheet, /--font-text:\s*'Manrope'/);
+  assert.match(stylesheet, /--font-display:\s*'Manrope'/);
+  assert.match(stylesheet, /body\s*\{[^}]*font-family:\s*var\(--font-text\)/s);
   assert.match(
     stylesheet,
-    /h1,\s*h2,\s*h3,\s*h4,\s*h5,\s*h6\s*\{[^}]*font-family:\s*'Manrope'[^}]*font-weight:\s*800/s,
+    /h1,\s*h2,\s*h3,\s*h4,\s*h5,\s*h6\s*\{[^}]*font-family:\s*var\(--font-display\)[^}]*font-weight:\s*800/s,
   );
   assert.match(
     stylesheet,
-    /\.logo-text\s*\{[^}]*font-family:\s*'Manrope'[^}]*font-weight:\s*800/s,
+    /\.logo-text\s*\{[^}]*font-family:\s*var\(--font-display\)[^}]*font-weight:\s*800/s,
   );
 });
 

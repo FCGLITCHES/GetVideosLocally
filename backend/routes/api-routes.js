@@ -4,6 +4,7 @@ const os = require("os");
 const path = require("path");
 const { Resend } = require("resend");
 const { assertMediaUrl } = require("../utils/media-url");
+const { tr, errorFields } = require("../utils/ui-message");
 
 function registerApiRoutes(
   app,
@@ -50,7 +51,7 @@ function registerApiRoutes(
         res.json(usageTelemetry.getStatus());
       } catch (error) {
         logger.error("[UsageStats] Failed to update setting:", error.message);
-        res.status(500).json({ error: "Could not update the usage statistics setting." });
+        res.status(500).json({ error: tr("Could not update the usage statistics setting.") });
       }
     });
   }
@@ -61,7 +62,7 @@ function registerApiRoutes(
     if (fields.some(([value, limit]) => typeof value !== "string" || value.length > limit) ||
         !/^[^\s<>"'@]+@[^\s<>"'@]+\.[^\s<>"'@]+$/.test(email) || !message.trim() ||
         /[\r\n]/.test(subject + type)) {
-      return res.status(400).json({ error: "Enter a valid email and message within the supported limits." });
+      return res.status(400).json({ error: tr("Enter a valid email and message within the supported limits.") });
     }
     const escapeHtml = value => value.replace(/[&<>"']/g, char => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -70,7 +71,7 @@ function registerApiRoutes(
     if (!process.env.RESEND_API_KEY) {
       return res
         .status(500)
-        .json({ error: "Email service not configured (Missing API Key)" });
+        .json({ error: tr("Email service not configured (Missing API Key)") });
     }
 
     const resend = new Resend(process.env.RESEND_API_KEY);
@@ -140,23 +141,23 @@ function registerApiRoutes(
 
       if (data.error) {
         logger.error("Email provider rejected support request:", data.error);
-        return res.status(502).json({ error: "Email delivery failed. Please try again later." });
+        return res.status(502).json({ error: tr("Email delivery failed. Please try again later.") });
       }
       logger.log("Email sent successfully:", data.data?.id);
       res.status(200).json({ success: true, id: data.data?.id });
     } catch (error) {
       logger.error("Failed to send email:", error);
-      res.status(500).json({ error: error.message || "Failed to send email" });
+      res.status(500).json(errorFields(error, tr("Failed to send email")));
     }
   });
 
   app.post("/video-info", async (req, res) => {
     const { url: videoUrl, clientId, source = "video" } = req.body;
     if (!videoUrl || !clientId) {
-      return res.status(400).json({ error: "URL and Client ID are required." });
+      return res.status(400).json({ error: tr("URL and Client ID are required.") });
     }
     try { assertMediaUrl(videoUrl); } catch (error) {
-      return res.status(400).json({ error: error.message });
+      return res.status(400).json(errorFields(error));
     }
 
     const tempItemId = `info_${source}_${Date.now()}`;
@@ -172,7 +173,7 @@ function registerApiRoutes(
       logger.error(`Error in /video-info for ${videoUrl}:`, error);
       res
         .status(500)
-        .json({ error: error.message || "Failed to fetch video info." });
+        .json(errorFields(error, tr("Failed to fetch video info.")));
     }
   });
 
@@ -181,10 +182,10 @@ function registerApiRoutes(
     if (!playlistUrl || !clientId) {
       return res
         .status(400)
-        .json({ error: "Playlist URL and clientId are required." });
+        .json({ error: tr("Playlist URL and clientId are required.") });
     }
     try { assertMediaUrl(playlistUrl); } catch (error) {
-      return res.status(400).json({ error: error.message });
+      return res.status(400).json(errorFields(error));
     }
 
     try {
@@ -194,7 +195,7 @@ function registerApiRoutes(
       logger.error("Error in /playlist-preview:", error);
       res
         .status(500)
-        .json({ error: error.message || "Failed to preview playlist." });
+        .json(errorFields(error, tr("Failed to preview playlist.")));
     }
   });
 
@@ -221,7 +222,7 @@ function registerApiRoutes(
       res.json(synced);
     } catch (error) {
       logger.error("[HistoryIndex] Failed to sync client history:", error);
-      res.status(500).json({ error: "Failed to sync history index" });
+      res.status(500).json({ error: tr("Failed to sync history index") });
     }
   });
 
@@ -260,7 +261,7 @@ function registerApiRoutes(
       logger.error("Error creating scheduled download:", error);
       res
         .status(500)
-        .json({ error: error.message || "Failed to create scheduled download." });
+        .json(errorFields(error, tr("Failed to create scheduled download.")));
     }
   });
 
@@ -278,7 +279,7 @@ function registerApiRoutes(
       logger.error("Error deleting scheduled download:", error);
       res
         .status(500)
-        .json({ error: error.message || "Failed to delete scheduled download." });
+        .json(errorFields(error, tr("Failed to delete scheduled download.")));
     }
   });
 
@@ -302,7 +303,7 @@ function registerApiRoutes(
       res.json(await dismissDownloadItem(String(clientId), String(req.params.itemId)));
     } catch (error) {
       logger.error("Error removing download item:", error);
-      res.status(500).json({ error: error.message || "Failed to remove download item." });
+      res.status(500).json(errorFields(error, tr("Failed to remove download item.")));
     }
   });
 
@@ -320,7 +321,7 @@ function registerApiRoutes(
       logger.error("Error retrying failed download:", error);
       res
         .status(500)
-        .json({ error: error.message || "Failed to retry download." });
+        .json(errorFields(error, tr("Failed to retry download.")));
     }
   });
 
@@ -337,12 +338,12 @@ function registerApiRoutes(
       logger.error("Error retrying all failed downloads:", error);
       res
         .status(500)
-        .json({ error: error.message || "Failed to retry failed downloads." });
+        .json(errorFields(error, tr("Failed to retry failed downloads.")));
     }
   });
 
   app.post("/shutdown", (req, res) => {
-    res.json({ message: "Server shutting down..." });
+    res.json({ message: tr("Server shutting down...") });
     setTimeout(() => gracefulShutdown(), 100);
   });
 
@@ -353,7 +354,7 @@ function registerApiRoutes(
       res.json(result);
     } catch (error) {
       logger.error("❌ Error in manual update endpoint:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json(errorFields(error));
     }
   });
 
@@ -383,7 +384,7 @@ function registerApiRoutes(
       });
     } catch (error) {
       logger.error("❌ Error getting tools status:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json(errorFields(error));
     }
   });
 
@@ -394,7 +395,7 @@ function registerApiRoutes(
       res.json(result);
     } catch (error) {
       logger.error("❌ Error in force update endpoint:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json(errorFields(error));
     }
   });
 
@@ -427,7 +428,7 @@ function registerApiRoutes(
       res.send(text);
     } catch (error) {
       logger.error("❌ Error generating diagnostics:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json(errorFields(error));
     }
   }
 
@@ -438,7 +439,7 @@ function registerApiRoutes(
   // when the user ticked the consent box for this report.
   app.post("/api/report-problem", async (req, res) => {
     if (!sendProblemReport) {
-      return res.status(503).json({ error: "Problem reports are not available in this build." });
+      return res.status(503).json({ error: tr("Problem reports are not available in this build.") });
     }
     const body = req.body && typeof req.body === "object" ? req.body : {};
     const { message, email = "", includeDiagnostics = false } = body;
@@ -457,7 +458,7 @@ function registerApiRoutes(
       res.json({ ok: true, id: result.id, diagnosticsIncluded: Boolean(diagnostics) });
     } catch (error) {
       logger.warn("[ProblemReport] Not sent:", error.message);
-      res.status(error.status || 500).json({ error: error.message });
+      res.status(error.status || 500).json(errorFields(error));
     }
   });
 
@@ -468,7 +469,7 @@ function registerApiRoutes(
       res.json(getCookieHealth ? await getCookieHealth() : { status: "unknown" });
     } catch (error) {
       logger.error("❌ Error reading cookie status:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json(errorFields(error));
     }
   });
 }

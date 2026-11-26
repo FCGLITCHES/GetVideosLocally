@@ -1,5 +1,7 @@
 "use strict";
 
+const { tr } = require("../utils/ui-message");
+
 function createWebSocketHub({
   WebSocket,
   urlParser,
@@ -53,7 +55,7 @@ function createWebSocketHub({
       );
       sendMessageToClient(clientId, {
         type: "status",
-        message: "Successfully connected to the download server.",
+        message: tr("Successfully connected to the download server."),
       });
       onConnect?.(clientId);
 
@@ -69,7 +71,7 @@ function createWebSocketHub({
           logger.error(`Failed to parse message from ${clientId}:`, error);
           sendMessageToClient(clientId, {
             type: "error",
-            message: "Invalid message format received.",
+            message: tr("Invalid message format received."),
           });
         }
       });

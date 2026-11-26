@@ -98,6 +98,92 @@ const { validateDownloadPath, isDownloadsRoot } = require('./backend/utils/path-
 const { createDesktopFileActions } = require('./backend/services/desktop-file-actions');
 const desktopFileActions = createDesktopFileActions({ shell });
 const { getCookiesFilePath, isValidCookiesText } = require('./backend/utils/cookie-storage');
+const { matchLanguage, matchFirstLanguage } = require('./public/i18n/languages.js');
+const { tr, fillUiText } = require('./backend/utils/ui-message');
+
+// ===== Native text (tray, dialogs, notifications) in the user's language =====
+// The English text is the key, with {placeholders}; scripts/i18n.js extracts
+// mainT(text) and mainT.plural(count, one, other). Errors returned to the window
+// over IPC stay English and are marked with tr(), the window translates them.
+let currentLanguage = null; // resolved lazily: app.getLocale() needs the ready event on Windows
+let currentCatalog = {};
+let currentPluralRules = null;
+
+function loadLocaleCatalog(code) {
+  if (code === 'en') return {};
+  try {
+    const catalog = require(`./public/i18n/locales/${code}.js`);
+    return catalog && typeof catalog === 'object' ? catalog : {};
+  } catch (error) {
+    console.warn(`[i18n] No translations loaded for "${code}": ${error.message}`);
+    return {};
+  }
+}
+
+function setCurrentLanguage(code) {
+  currentLanguage = matchLanguage(code) || 'en';
+  currentCatalog = loadLocaleCatalog(currentLanguage);
+  try { currentPluralRules = new Intl.PluralRules(currentLanguage); } catch (_) { currentPluralRules = new Intl.PluralRules('en'); }
+  return currentLanguage;
+}
+
+// The language saved in the window's settings (mirrored to AppData by settings-backup:write).
+function readSavedUiLanguage() {
+  try {
+    const backup = JSON.parse(fs.readFileSync(getSettingsBackupPath(), 'utf8'));
+    if (typeof backup?.ytdUserSettings !== 'string') return null;
+    return matchLanguage(JSON.parse(backup.ytdUserSettings)?.language);
+  } catch (_) {
+    return null;
+  }
+}
+
+function readSystemUiLanguage() {
+  try {
+    const preferred = app.getPreferredSystemLanguages?.() || [];
+    return matchFirstLanguage([...preferred, app.getLocale()]);
+  } catch (_) {
+    return null;
+  }
+}
+
+function getCurrentLanguage() {
+  if (!currentLanguage) setCurrentLanguage(readSavedUiLanguage() || readSystemUiLanguage() || 'en');
+  return currentLanguage;
+}
+
+function mainT(source, vars) {
+  getCurrentLanguage();
+  const entry = currentCatalog[source];
+  const text = typeof entry === 'string' && entry ? entry : (entry && typeof entry === 'object' && entry.other) || source;
+  return fillUiText(text, vars);
+}
+
+// Key is the English "other" form; a translation may be a string or CLDR forms { one, few, many, other, zero }.
+mainT.plural = (count, one, other, vars) => {
+  getCurrentLanguage();
+  const values = { count, ...(vars || {}) };
+  const entry = currentCatalog[other];
+  if (entry && typeof entry === 'object') {
+    const category = Number(count) === 0 && entry.zero ? 'zero' : currentPluralRules.select(Number(count));
+    return fillUiText(entry[category] || entry.other || other, values);
+  }
+  if (typeof entry === 'string' && entry) return fillUiText(entry, values);
+  return fillUiText(Number(count) === 1 ? one : other, values);
+};
+
+// cookies.html is loaded with ?lang=..., so compare it without query or hash.
+const COOKIES_PAGE_URL = pathToFileURL(path.join(__dirname, 'public', 'cookies.html')).href;
+function isCookiesPageUrl(value) {
+  try {
+    const parsed = new URL(value);
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.href === COOKIES_PAGE_URL;
+  } catch (_) {
+    return false;
+  }
+}
 
 let mainWindow;
 let cookieWindow = null; // Track the cookie helper window
@@ -346,32 +432,7 @@ function createTrayIcon() {
     const trayIcon = nativeImage.createFromPath(WINDOWS_BRAND_ICON_PATH);
     tray = new Tray(trayIcon.resize({ width: 16, height: 16 }));
 
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: 'Show GetVideosLocally',
-        click: () => {
-          if (mainWindow) {
-            mainWindow.show();
-            mainWindow.focus();
-          }
-        }
-      },
-      {
-        label: `Downloads: ${activeDownloadCount} active`,
-        enabled: false
-      },
-      { type: 'separator' },
-      {
-        label: 'Exit',
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        }
-      }
-    ]);
-
-    tray.setToolTip(`GetVideosLocally - ${activeDownloadCount} download${activeDownloadCount !== 1 ? 's' : ''} in progress`);
-    tray.setContextMenu(contextMenu);
+    updateTrayMenu();
 
     // Single click to show window
     tray.on('click', () => {
@@ -403,7 +464,7 @@ function updateTrayMenu() {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Show GetVideosLocally',
+      label: mainT('Show GetVideosLocally'),
       click: () => {
         if (mainWindow) {
           mainWindow.show();
@@ -412,12 +473,12 @@ function updateTrayMenu() {
       }
     },
     {
-      label: `Downloads: ${activeDownloadCount} active`,
+      label: mainT.plural(activeDownloadCount, 'Downloads: {count} active', 'Downloads: {count} active'),
       enabled: false
     },
     { type: 'separator' },
     {
-      label: 'Exit',
+      label: mainT('Exit'),
       click: () => {
         isQuitting = true;
         app.quit();
@@ -425,7 +486,11 @@ function updateTrayMenu() {
     }
   ]);
 
-  tray.setToolTip(`GetVideosLocally - ${activeDownloadCount} download${activeDownloadCount !== 1 ? 's' : ''} in progress`);
+  tray.setToolTip(mainT.plural(
+    activeDownloadCount,
+    'GetVideosLocally - {count} download in progress',
+    'GetVideosLocally - {count} downloads in progress',
+  ));
   tray.setContextMenu(contextMenu);
 }
 
@@ -441,12 +506,11 @@ function destroyTrayIcon() {
 }
 
 function secureWindowNavigation(win) {
-  const ownFileUrl = pathToFileURL(path.join(__dirname, 'public', 'cookies.html')).href;
   const isTrustedUrl = (value) => {
     try {
       const parsed = new URL(value);
       return parsed.origin === `http://127.0.0.1:${serverPort}` ||
-        (win === cookieWindow && value === ownFileUrl);
+        (win === cookieWindow && isCookiesPageUrl(value));
     } catch (_) { return false; }
   };
   const openExternal = (value) => {
@@ -483,7 +547,7 @@ async function createWindow() {
       height: lastState.height,
       minWidth: 580,
       minHeight: 830,
-      title: 'GetVideosLocally - Multi-Site Video Downloader',
+      title: mainT('GetVideosLocally - Multi-Site Video Downloader'),
       show: false, // Don't show until ready
       webPreferences: {
         nodeIntegration: false,
@@ -521,7 +585,7 @@ async function createWindow() {
 
   } catch (error) {
     console.error('Failed to create window:', error);
-    dialog.showErrorBox("Startup Error", `Failed to start application: ${error.message}`);
+    dialog.showErrorBox(mainT("Startup Error"), mainT("Failed to start application: {error}", { error: error.message }));
     app.quit();
     return;
   }
@@ -619,7 +683,7 @@ function startServer() {
 
     if (!fs.existsSync(serverScriptPath)) {
       console.error(`Server script not found at ${serverScriptPath}`);
-      dialog.showErrorBox("Server Error", `The server script (server.js) could not be found.`);
+      dialog.showErrorBox(mainT("Server Error"), mainT("The server script (server.js) could not be found."));
       reject(new Error('Server script not found'));
       return;
     }
@@ -643,12 +707,12 @@ function startServer() {
     console.log(`[electron-main.js] Does node binary exist at path? ${nodeExists}`);
 
     if (!ytdlpExists) {
-      dialog.showErrorBox("Dependency Error", `yt-dlp executable not found at the expected path: ${ytdlpPath}. Please ensure it's correctly placed.`);
+      dialog.showErrorBox(mainT("Dependency Error"), mainT("yt-dlp executable not found at the expected path: {path}. Please ensure it's correctly placed.", { path: ytdlpPath }));
       // app.quit(); // Decide if you want to quit
       // return;
     }
     if (!ffmpegExists) {
-      dialog.showErrorBox("Dependency Error", `ffmpeg executable not found at the expected path: ${ffmpegPath}. Please ensure it's correctly placed.`);
+      dialog.showErrorBox(mainT("Dependency Error"), mainT("ffmpeg executable not found at the expected path: {path}. Please ensure it's correctly placed.", { path: ffmpegPath }));
       // app.quit();
       // return;
     }
@@ -686,8 +750,11 @@ function startServer() {
       if (code !== 0 && !serverProcess?.killed && signal !== 'SIGTERM' && signal !== 'SIGKILL' && !isQuitting) {
         dialog.showMessageBox(mainWindow || null, {
           type: 'warning',
-          title: 'Server Stopped',
-          message: `The backend server process stopped unexpectedly (code: ${code}, signal: ${signal}). Some features might not work. You may need to restart the application.`
+          title: mainT('Server Stopped'),
+          message: mainT(
+            'The backend server process stopped unexpectedly (code: {code}, signal: {signal}). Some features might not work. You may need to restart the application.',
+            { code, signal },
+          )
         });
       }
       serverProcess = null;
@@ -772,6 +839,16 @@ ipcMain.on('settings-backup:read', (event) => {
   } catch (_) {
     event.returnValue = null;
   }
+});
+// The window tells this process when the user picks a language (the resolved
+// code, e.g. "de"), so the tray and native dialogs follow it.
+ipcMain.on('ui-language:set', (event, code) => {
+  try { assertTrustedIpcSender(event); } catch (_) { return; }
+  const match = matchLanguage(String(code || ''));
+  if (!match || match === currentLanguage) return;
+  setCurrentLanguage(match);
+  console.log(`[i18n] Native UI language: ${match}`);
+  updateTrayMenu();
 });
 ipcMain.handle('settings-backup:write', async (event, snapshot) => {
   assertTrustedIpcSender(event);
@@ -900,8 +977,7 @@ function assertTrustedIpcSender(event) {
     throw new Error('Unauthorized IPC caller');
   }
   const url = event.senderFrame?.url || '';
-  if (event.sender === cookieWindow?.webContents &&
-      url === pathToFileURL(path.join(__dirname, 'public', 'cookies.html')).href) return;
+  if (event.sender === cookieWindow?.webContents && isCookiesPageUrl(url)) return;
   try {
     const parsed = new URL(url);
     if (parsed.origin === `http://127.0.0.1:${serverPort}`) return;
@@ -965,11 +1041,11 @@ ipcMain.handle('save-cookies-txt', async (event, content) => {
   assertTrustedIpcSender(event);
   try {
     if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 5 * 1024 * 1024) {
-      throw new TypeError('Cookies must be text no larger than 5 MB');
+      throw new TypeError(tr('Cookies must be text no larger than 5 MB'));
     }
     content = content.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
     if (content.trim() && !isValidCookiesText(content)) {
-      throw new TypeError('Import a valid Netscape cookies.txt file');
+      throw new TypeError(tr('Import a valid Netscape cookies.txt file'));
     }
     const cookiesDir = resourcesCookiesPath;
     const cookiesPath = path.join(cookiesDir, 'cookies.txt');
@@ -997,7 +1073,7 @@ ipcMain.handle('get-cookies-txt', async (event) => {
       const content = fs.readFileSync(cookiesPath, 'utf8');
       return { success: true, content, path: cookiesPath };
     } else {
-      return { success: false, error: 'Cookies file not found' };
+      return { success: false, error: tr('Cookies file not found') };
     }
   } catch (err) {
     return { success: false, error: err.message };
@@ -1059,7 +1135,7 @@ ipcMain.handle('open-cookies-helper', async (event) => {
     parent: mainWindow,
     modal: false,
     show: true,
-    title: 'Import Your Browser Cookies',
+    title: mainT('Import Your Browser Cookies'),
     icon: WINDOWS_BRAND_ICON_PATH,
     minWidth: 320,
     minHeight: 200,
@@ -1082,7 +1158,7 @@ ipcMain.handle('open-cookies-helper', async (event) => {
       mainWindow.focus();
     }
   });
-  win.loadFile(path.join(__dirname, 'public', 'cookies.html'));
+  win.loadFile(path.join(__dirname, 'public', 'cookies.html'), { query: { lang: getCurrentLanguage() } });
   return true;
 });
 
@@ -1094,7 +1170,7 @@ ipcMain.handle('close-cookie-window', async (event) => {
     // Note: The 'closed' event handler will handle showing the main window and clearing the reference
     return { success: true };
   }
-  return { success: false, error: 'Cookie window not found' };
+  return { success: false, error: tr('Cookie window not found') };
 });
 
 // Add file upload handler for cookies
@@ -1103,8 +1179,8 @@ ipcMain.handle('upload-cookies-file', async (event) => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
-      { name: 'Text Files', extensions: ['txt'] },
-      { name: 'All Files', extensions: ['*'] }
+      { name: mainT('Text Files'), extensions: ['txt'] },
+      { name: mainT('All Files'), extensions: ['*'] }
     ]
   });
   if (result.canceled || !result.filePaths.length) return null;
@@ -1235,7 +1311,7 @@ ipcMain.handle('delete-file', async (event, rootPath, filePath) => {
     const stats = fs.statSync(resolved);
 
     if (!stats.isFile()) {
-      return { success: false, error: 'Path is not a file' };
+      return { success: false, error: tr('Path is not a file') };
     }
 
     console.log(`[delete-file] Moving to Recycle Bin: ${resolved}`);
@@ -1256,12 +1332,12 @@ ipcMain.handle('delete-folder', async (event, rootPath, folderPath) => {
     const stats = fs.statSync(resolved);
 
     if (!stats.isDirectory()) {
-      return { success: false, error: 'Path is not a directory' };
+      return { success: false, error: tr('Path is not a directory') };
     }
 
     const resolvedRoot = fs.realpathSync.native(rootPath);
     if (isDownloadsRoot(resolved, resolvedRoot)) {
-      return { success: false, error: 'Cannot delete the downloads root folder' };
+      return { success: false, error: tr('Cannot delete the downloads root folder') };
     }
 
     console.log(`[delete-folder] Moving to Recycle Bin: ${resolved}`);
@@ -1305,19 +1381,19 @@ ipcMain.handle('test-folder-access', async (event, folderPath) => {
   assertTrustedIpcSender(event);
   try {
     if (!folderPath || typeof folderPath !== 'string') {
-      return { success: false, error: 'No folder path provided.' };
+      return { success: false, error: tr('No folder path provided.') };
     }
 
     const folderStats = await fs.promises.stat(folderPath);
     if (!folderStats.isDirectory()) {
-      return { success: false, error: 'Configured path is not a folder.' };
+      return { success: false, error: tr('Configured path is not a folder.') };
     }
 
     await fs.promises.access(folderPath, fs.constants.R_OK | fs.constants.W_OK);
     return { success: true };
   } catch (error) {
     console.error(`[test-folder-access] Error checking folder ${folderPath}:`, error);
-    return { success: false, error: error.message || 'Unable to verify folder access.' };
+    return { success: false, error: error.message || tr('Unable to verify folder access.') };
   }
 });
 
@@ -1469,19 +1545,23 @@ ipcMain.handle('get-firewall-rule-status', async (event) => {
 
 ipcMain.handle('enable-firewall-rule', async (event) => {
   assertTrustedIpcSender(event);
-  if (os.platform() !== 'win32') return { success: false, error: 'Only supported on Windows' };
+  if (os.platform() !== 'win32') return { success: false, error: tr('Only supported on Windows') };
 
   const ruleName = 'GetVideosLocally-Server-Access';
   const appPath = app.getPath('exe');
 
   const { response } = await dialog.showMessageBox(mainWindow, {
     type: 'question',
-    buttons: ['Allow', 'Cancel'],
+    buttons: [mainT('Allow'), mainT('Cancel')], // index 0 = allow; keep the order
     defaultId: 1,
     cancelId: 1,
-    title: 'Firewall Access',
-    message: 'Allow GetVideosLocally through Windows Firewall?',
-    detail: `This adds an inbound rule so other devices on your local network can connect to GetVideosLocally for LAN access.\n\nApplication: ${appPath}\n\nYou can remove this rule at any time from Settings or Windows Firewall.`
+    title: mainT('Firewall Access'),
+    message: mainT('Allow GetVideosLocally through Windows Firewall?'),
+    detail: [
+      mainT('This adds an inbound rule so other devices on your local network can connect to GetVideosLocally for LAN access.'),
+      mainT('Application: {path}', { path: appPath }),
+      mainT('You can remove this rule at any time from Settings or Windows Firewall.'),
+    ].join('\n\n')
   });
 
   if (response !== 0) {
@@ -1505,17 +1585,17 @@ ipcMain.handle('enable-firewall-rule', async (event) => {
 
 ipcMain.handle('disable-firewall-rule', async (event) => {
   assertTrustedIpcSender(event);
-  if (os.platform() !== 'win32') return { success: false, error: 'Only supported on Windows' };
+  if (os.platform() !== 'win32') return { success: false, error: tr('Only supported on Windows') };
 
   const ruleName = 'GetVideosLocally-Server-Access';
   const { response } = await dialog.showMessageBox(mainWindow, {
     type: 'question',
-    buttons: ['Remove', 'Cancel'],
+    buttons: [mainT('Remove'), mainT('Cancel')], // index 0 = remove; keep the order
     defaultId: 1,
     cancelId: 1,
-    title: 'Firewall Access',
-    message: 'Remove the GetVideosLocally firewall rule?',
-    detail: 'This removes the inbound Windows Firewall rule used for LAN access.'
+    title: mainT('Firewall Access'),
+    message: mainT('Remove the GetVideosLocally firewall rule?'),
+    detail: mainT('This removes the inbound Windows Firewall rule used for LAN access.')
   });
 
   if (response !== 0) {
@@ -1561,7 +1641,7 @@ ipcMain.handle('update-download-count', async (event, count) => {
     tray.displayBalloon({
       iconType: 'info',
       title: 'GetVideosLocally',
-      content: 'All downloads have finished successfully!'
+      content: mainT('All downloads have finished successfully!')
     });
 
     // CRITICAL: Do NOT show or focus window. 

@@ -1,5 +1,7 @@
 "use strict";
 
+const { tr } = require("../utils/ui-message");
+
 const {
   detectSiteKeyFromUrl,
   resolveDownloadConcurrency,
@@ -195,8 +197,9 @@ function createMetadataService({
         );
         sendMessageToClient(clientId, {
           type: "status",
-          message:
+          message: tr(
             "Could not fetch detailed video info, proceeding with defaults.",
+          ),
           itemId,
         });
         return {

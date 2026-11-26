@@ -1,5 +1,7 @@
 "use strict";
 
+const { tr, uiMessage } = require("../utils/ui-message");
+
 const {
   detectSiteKeyFromUrl,
   getSiteDownloadProfile,
@@ -245,8 +247,9 @@ function createPlaylistService({
       sendMessageToClient(clientId, {
         type: "status",
         itemId: playlistMetaId,
-        message:
+        message: tr(
           "Playlist seems empty or contains no downloadable video items.",
+        ),
       });
     }
 
@@ -298,7 +301,9 @@ function createPlaylistService({
         );
         sendMessageToClient(clientId, {
           type: "error",
-          message: `Failed to get playlist items: ${error.message.substring(0, 100)}`,
+          ...uiMessage("Failed to get playlist items: {error}", {
+            error: error.message.substring(0, 100),
+          }),
           itemId: playlistMetaId,
         });
         throw error;

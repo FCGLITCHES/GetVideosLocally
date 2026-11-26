@@ -1,5 +1,7 @@
 "use strict";
 
+const { tr } = require("../utils/ui-message");
+
 // In-app updates for GetVideosLocally.
 //
 // Installed copies (NSIS) use electron-updater: the new version downloads in
@@ -79,7 +81,7 @@ function createAppUpdater({
     updater.on("error", (error) => {
       logger.warn?.("App update failed:", error?.message || error);
       // A finished download stays installable even if a later check fails.
-      if (state.status !== "ready") setState({ status: "error", error: "Couldn't check for updates. Try again later." });
+      if (state.status !== "ready") setState({ status: "error", error: tr("Couldn't check for updates. Try again later.") });
     });
     return updater;
   }
@@ -101,7 +103,7 @@ function createAppUpdater({
       });
     } catch (error) {
       logger.warn?.("Portable update check failed:", error.message);
-      setState({ status: "error", error: "Couldn't check for updates. Try again later." });
+      setState({ status: "error", error: tr("Couldn't check for updates. Try again later.") });
     }
   }
 
@@ -118,7 +120,7 @@ function createAppUpdater({
         }
       } catch (error) {
         logger.warn?.("Update check failed:", error?.message || error);
-        if (state.status !== "ready") setState({ status: "error", error: "Couldn't check for updates. Try again later." });
+        if (state.status !== "ready") setState({ status: "error", error: tr("Couldn't check for updates. Try again later.") });
       } finally {
         checking = null;
       }

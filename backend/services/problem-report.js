@@ -4,6 +4,8 @@
 // when they agree to include it, to the website, which emails support. The
 // mail service key lives only on the website, never in the app.
 
+const { tr, uiMessage, uiException } = require("../utils/ui-message");
+
 const DEFAULT_REPORT_ENDPOINT = "https://getvideoslocally.com/api/app/report";
 const MESSAGE_MAX_CHARS = 5000;
 // The site accepts up to 1.5M characters. Keep headroom for the JSON envelope.
@@ -39,14 +41,14 @@ function fitDiagnostics(text, limit = DIAGNOSTICS_MAX_CHARS) {
 
 function validateReportInput({ message, email } = {}) {
   if (typeof message !== "string" || !message.trim()) {
-    return "Describe what went wrong.";
+    return { message: tr("Describe what went wrong.") };
   }
   if (message.trim().length > MESSAGE_MAX_CHARS) {
-    return `Keep the description under ${MESSAGE_MAX_CHARS} characters.`;
+    return uiMessage("Keep the description under {max} characters.", { max: MESSAGE_MAX_CHARS });
   }
   if (email !== undefined && email !== null && email !== "") {
     if (typeof email !== "string" || email.length > 254 || !EMAIL_PATTERN.test(email.trim())) {
-      return "Enter a valid email address, or leave it empty.";
+      return { message: tr("Enter a valid email address, or leave it empty.") };
     }
   }
   return null;
@@ -64,7 +66,7 @@ async function sendProblemReport({
 }) {
   const invalid = validateReportInput({ message, email });
   if (invalid) {
-    const error = new Error(invalid);
+    const error = uiException(invalid);
     error.status = 400;
     throw error;
   }
@@ -88,8 +90,8 @@ async function sendProblemReport({
   } catch (error) {
     const failure = new Error(
       error.name === "AbortError"
-        ? "Sending timed out. Check your connection and try again."
-        : "Could not reach getvideoslocally.com. Check your connection and try again.",
+        ? tr("Sending timed out. Check your connection and try again.")
+        : tr("Could not reach getvideoslocally.com. Check your connection and try again."),
     );
     failure.status = 502;
     throw failure;
@@ -101,12 +103,12 @@ async function sendProblemReport({
     const body = await response.json().catch(() => ({}));
     return { ok: true, id: body.id || null };
   }
-  const failure = new Error(
+  const failure = uiException(
     response.status === 429
-      ? "Too many reports from this network. Try again in an hour."
+      ? { message: tr("Too many reports from this network. Try again in an hour.") }
       : response.status === 413
-        ? "The report is too large to send. Save the diagnostics file and email it instead."
-        : `The report could not be sent (HTTP ${response.status}). Try again later.`,
+        ? { message: tr("The report is too large to send. Save the diagnostics file and email it instead.") }
+        : uiMessage("The report could not be sent (HTTP {status}). Try again later.", { status: response.status }),
   );
   failure.status = response.status === 429 ? 429 : 502;
   throw failure;

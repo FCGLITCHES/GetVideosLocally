@@ -79,6 +79,173 @@
         U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+@font-face {
+    font-family: 'Manrope';
+    font-style: normal;
+    font-weight: 200 800;
+    font-display: swap;
+    src: url('/public/fonts/manrope-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+    font-family: 'Manrope';
+    font-style: normal;
+    font-weight: 200 800;
+    font-display: swap;
+    src: url('/public/fonts/manrope-cyrillic.woff2') format('woff2');
+    unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+    font-family: 'Manrope';
+    font-style: normal;
+    font-weight: 200 800;
+    font-display: swap;
+    src: url('/public/fonts/manrope-cyrillic-ext.woff2') format('woff2');
+    unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+    font-family: 'Manrope';
+    font-style: normal;
+    font-weight: 200 800;
+    font-display: swap;
+    src: url('/public/fonts/manrope-greek.woff2') format('woff2');
+    unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+@font-face {
+    font-family: 'Manrope';
+    font-style: normal;
+    font-weight: 200 800;
+    font-display: swap;
+    src: url('/public/fonts/manrope-vietnamese.woff2') format('woff2');
+    unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+
+/* Script fonts. Each covers only its own script, so Latin words, numbers and
+   brand names inside a translated sentence keep using Manrope. */
+@font-face {
+    font-family: 'GVL Arabic';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/public/fonts/noto-sans-arabic.woff2') format('woff2');
+    unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+@font-face {
+    font-family: 'GVL Persian';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/public/fonts/vazirmatn-arabic.woff2') format('woff2');
+    unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+@font-face {
+    font-family: 'GVL Urdu';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('/public/fonts/noto-nastaliq-urdu.woff2') format('woff2');
+    unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+@font-face {
+    font-family: 'GVL Hebrew';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/public/fonts/heebo-hebrew.woff2') format('woff2');
+    unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F;
+}
+@font-face {
+    font-family: 'GVL Devanagari';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/public/fonts/noto-sans-devanagari.woff2') format('woff2');
+    unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20B9, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF;
+}
+@font-face {
+    font-family: 'GVL Bengali';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/public/fonts/noto-sans-bengali.woff2') format('woff2');
+    unicode-range: U+0951-0952, U+0964-0965, U+0980-09FE, U+1CD0, U+1CD2, U+1CD5-1CD6, U+1CD8, U+1CE1, U+1CEA, U+1CED, U+1CF2, U+1CF5-1CF7, U+200C-200D, U+20B9, U+25CC, U+A8F1;
+}
+@font-face {
+    font-family: 'GVL Tamil';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/public/fonts/noto-sans-tamil.woff2') format('woff2');
+    unicode-range: U+0964-0965, U+0B82-0BFA, U+200C-200D, U+20B9, U+25CC;
+}
+@font-face {
+    font-family: 'GVL Telugu';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/public/fonts/noto-sans-telugu.woff2') format('woff2');
+    unicode-range: U+0951-0952, U+0964-0965, U+0C00-0C7F, U+1CDA, U+1CF2, U+200C-200D, U+25CC;
+}
+@font-face {
+    font-family: 'GVL Thai';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/public/fonts/noto-sans-thai-looped.woff2') format('woff2');
+    unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC;
+}
+
+/* Type stack per writing system (html[data-script] is set by public/i18n/i18n.js). */
+:root {
+    --font-text: 'Manrope', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+    --font-display: 'Manrope', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+}
+html[data-script="arabic"] { --font-text: 'GVL Arabic', 'Manrope', 'Segoe UI', Tahoma, sans-serif; }
+html[data-script="persian"] { --font-text: 'GVL Persian', 'Manrope', 'Segoe UI', Tahoma, sans-serif; }
+/* Nastaliq is how Urdu is read; compact controls use Naskh so tall letters never clip. */
+html[data-script="urdu"] { --font-text: 'GVL Urdu', 'Manrope', 'Segoe UI', sans-serif; }
+html[data-script="hebrew"] { --font-text: 'GVL Hebrew', 'Manrope', 'Segoe UI', Arial, sans-serif; }
+html[data-script="devanagari"] { --font-text: 'GVL Devanagari', 'Manrope', 'Nirmala UI', sans-serif; }
+html[data-script="bengali"] { --font-text: 'GVL Bengali', 'Manrope', 'Nirmala UI', sans-serif; }
+html[data-script="tamil"] { --font-text: 'GVL Tamil', 'Manrope', 'Nirmala UI', sans-serif; }
+html[data-script="telugu"] { --font-text: 'GVL Telugu', 'Manrope', 'Nirmala UI', sans-serif; }
+html[data-script="thai"] { --font-text: 'GVL Thai', 'Manrope', 'Leelawadee UI', Leelawadee, Tahoma, sans-serif; }
+html[data-script="japanese"] { --font-text: 'Manrope', 'Yu Gothic UI', 'Meiryo UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif; }
+html[data-script="korean"] { --font-text: 'Manrope', 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; }
+html[data-script="han-sc"] { --font-text: 'Manrope', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans SC', sans-serif; }
+html[data-script="han-tc"] { --font-text: 'Manrope', 'Microsoft JhengHei UI', 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans TC', sans-serif; }
+html:not([data-script="latin"]):not([data-script="cyrillic"]):not([data-script="greek"]) { --font-display: var(--font-text); }
+
+/* Letter-spacing breaks Arabic joining and crowds Indic, Thai and CJK text. */
+html:is([data-script="arabic"], [data-script="persian"], [data-script="urdu"], [data-script="hebrew"],
+    [data-script="devanagari"], [data-script="bengali"], [data-script="tamil"], [data-script="telugu"],
+    [data-script="thai"], [data-script="japanese"], [data-script="korean"], [data-script="han-sc"], [data-script="han-tc"]) * {
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+}
+/* Scripts with marks above and below the line need more leading. */
+html:is([data-script="devanagari"], [data-script="bengali"], [data-script="tamil"], [data-script="telugu"], [data-script="thai"]) body { line-height: 1.65; }
+html[data-script="urdu"] body { line-height: 1.95; }
+html[data-script="urdu"] :is(button, select, input, textarea, option, .btn, [class*="pill"], [class*="badge"], [class*="chip"], [class*="tab"], [class*="status"]) {
+    font-family: 'GVL Arabic', 'Manrope', 'Segoe UI', sans-serif;
+    line-height: 1.5;
+}
+html:is([data-script="japanese"], [data-script="han-sc"], [data-script="han-tc"]) body { line-break: strict; }
+html[data-script="korean"] body { word-break: keep-all; }
+
+/* Right-to-left. Layout uses logical properties; mirror what CSS cannot. */
+[dir="rtl"] :is(.fa-arrow-right, .fa-arrow-left, .fa-chevron-right, .fa-chevron-left, .fa-angle-right, .fa-angle-left,
+    .fa-arrow-right-long, .fa-arrow-left-long, .fa-caret-right, .fa-caret-left, .fa-share, .fa-reply,
+    .fa-arrow-up-right-from-square, .fa-external-link-alt, .fa-right-from-bracket, .fa-sign-out-alt) {
+    transform: scaleX(-1);
+}
+[dir="rtl"] .onboarding-toggle-switch input:checked + .onboarding-toggle-slider::before { transform: translateX(-20px); }
+[dir="rtl"] .setup-switch input:checked + span::after { transform: translateX(-16px); }
+[dir="rtl"] #settingsModal .setting-item.checkbox-group input[type="checkbox"]:checked::before { transform: translateX(-1rem); }
+/* Links, paths and file names stay left-to-right inside RTL text. */
+[dir="rtl"] :is(input[type="url"], input[type="email"]):not(:placeholder-shown),
+[dir="rtl"] :is(code, kbd) { direction: ltr; text-align: end; }
+
 .settings-help-text {
     margin: 0.35rem 0 0;
     color: var(--text-muted);
@@ -96,7 +263,7 @@
     place-items: center;
     width: 26px;
     height: 26px;
-    margin-left: 0.35rem;
+    margin-inline-start: 0.35rem;
     padding: 0;
     color: var(--primary-color);
     background: transparent;
@@ -116,7 +283,7 @@
     position: absolute;
     z-index: 20;
     top: calc(100% + 0.4rem);
-    right: 0;
+    inset-inline-end: 0;
     width: min(290px, calc(100vw - 3rem));
     margin: 0;
     padding: 0.7rem 0.8rem;
@@ -345,7 +512,7 @@ html {
 }
 
 body {
-    font-family: 'Manrope', 'Segoe UI Variable Text', sans-serif;
+    font-family: var(--font-text);
     background-color: var(--bg-color);
     color: var(--text-color);
     min-height: 100dvh;
@@ -366,7 +533,7 @@ h3,
 h4,
 h5,
 h6 {
-    font-family: 'Manrope', 'Segoe UI Variable Display', sans-serif;
+    font-family: var(--font-display);
     font-weight: 800;
     letter-spacing: -0.035em;
 }
@@ -469,7 +636,7 @@ body[data-ui-density="compact"] .settings-actions {
 }
 
 .logo-text {
-    font-family: 'Manrope', 'Segoe UI Variable Display', sans-serif;
+    font-family: var(--font-display);
     font-size: 24px;
     font-weight: 800;
     color: #ffffff;
@@ -480,7 +647,7 @@ body[data-ui-density="compact"] .settings-actions {
     text-overflow: ellipsis;
     min-width: 0;
     flex-shrink: 1;
-    margin-left: 8px;
+    margin-inline-start: 8px;
 }
 
 .header-buttons {
@@ -538,7 +705,7 @@ body[data-ui-density="compact"] .settings-actions {
     content: '';
     position: absolute;
     bottom: 0;
-    left: 0;
+    inset-inline-start: 0;
     width: 100%;
     height: 3px;
     /* Slightly thicker underline */
@@ -594,8 +761,8 @@ body[data-ui-density="compact"] .settings-actions {
     content: '';
     position: absolute;
     top: 0;
-    left: 0;
-    right: 0;
+    inset-inline-start: 0;
+    inset-inline-end: 0;
     height: 2px;
     background: var(--primary-color);
     opacity: 0.6;
@@ -683,7 +850,7 @@ body[data-ui-density="compact"] .settings-actions {
         justify-content: flex-end;
         width: auto;
         min-width: 0;
-        margin-left: 0;
+        margin-inline-start: 0;
     }
 
     .download-links-container .item-control-buttons {
@@ -763,7 +930,7 @@ body[data-ui-density="compact"] .settings-actions {
 }
 
 .downloader-icon {
-    margin-right: 0.7rem;
+    margin-inline-end: 0.7rem;
     /* Adjusted */
     font-size: 1.6rem;
     /* Adjusted */
@@ -911,7 +1078,7 @@ body[data-ui-density="compact"] .settings-actions {
 
 .setting-item-with-help .settings-help-text {
     display: block;
-    margin-left: calc(var(--settings-checkbox-size) + 0.4rem);
+    margin-inline-start: calc(var(--settings-checkbox-size) + 0.4rem);
 }
 
 .playback-tip {
@@ -929,7 +1096,7 @@ body[data-ui-density="compact"] .settings-actions {
     gap: 0.55rem;
     width: 100%;
     max-width: none;
-    text-align: left;
+    text-align: start;
 }
 
 .update-item {
@@ -1303,7 +1470,7 @@ body[data-ui-density="compact"] .settings-actions {
     margin-bottom: 0.3rem;
     color: var(--text-color);
     line-height: 1.3;
-    padding-right: 0.5rem;
+    padding-inline-end: 0.5rem;
     /* Prevent text touching buttons */
 }
 
@@ -1326,7 +1493,7 @@ body[data-ui-density="compact"] .settings-actions {
 .item-size {
     font-size: 0.8rem;
     opacity: 0.7;
-    margin-left: 0.3rem;
+    margin-inline-start: 0.3rem;
     display: inline;
     color: var(--text-color);
 }
@@ -1418,7 +1585,7 @@ body[data-ui-density="compact"] .settings-actions {
 }
 
 .modern-folder-btn.align-with-complete {
-    margin-left: 0;
+    margin-inline-start: 0;
 }
 
 
@@ -1429,7 +1596,7 @@ body[data-ui-density="compact"] .settings-actions {
     flex-direction: column;
     align-items: center;
     gap: 0.6rem;
-    margin-left: 0.8rem;
+    margin-inline-start: 0.8rem;
     padding-top: 0.2rem;
     min-width: 0;
 }
@@ -1522,7 +1689,7 @@ body[data-ui-density="compact"] .settings-actions {
 @media (max-width: 768px) {
     .item-buttons {
         min-width: 90px;
-        margin-left: 0.5rem;
+        margin-inline-start: 0.5rem;
     }
 
     .item-control-btn {
@@ -1646,7 +1813,7 @@ body[data-ui-density="compact"] .settings-actions {
 
 .status-pill.is-idle {
     gap: 0.6rem;
-    padding-right: 0.8rem;
+    padding-inline-end: 0.8rem;
 }
 
 /* Text stays readable to screen readers while the pill is collapsed. */
@@ -1820,7 +1987,7 @@ body[data-ui-density="compact"] .settings-actions {
 }
 
 .settings-btn {
-    margin-left: 0.3rem;
+    margin-inline-start: 0.3rem;
 }
 
 /* Reduced margin */
@@ -1868,13 +2035,13 @@ body[data-ui-density="compact"] .settings-actions {
     counter-reset: steps-counter;
     max-width: 700px;
     margin: 0 auto 2rem auto;
-    padding-left: 0;
+    padding-inline-start: 0;
 }
 
 .steps-list li {
     counter-increment: steps-counter;
     margin-bottom: 1.2rem;
-    padding-left: 2.8rem;
+    padding-inline-start: 2.8rem;
     position: relative;
     font-size: 1rem;
 }
@@ -1882,7 +2049,7 @@ body[data-ui-density="compact"] .settings-actions {
 .steps-list li::before {
     content: counter(steps-counter);
     position: absolute;
-    left: 0;
+    inset-inline-start: 0;
     top: -2px;
     /* Align better with text */
     width: 2rem;
@@ -2047,7 +2214,7 @@ body[data-ui-density="compact"] .settings-actions {
 .background-shapes {
     position: fixed;
     top: 0;
-    left: 0;
+    inset-inline-start: 0;
     width: 100%;
     height: 100%;
     overflow: hidden;
@@ -2069,7 +2236,7 @@ body[data-ui-density="compact"] .settings-actions {
     width: 150px;
     height: 150px;
     top: 10%;
-    left: 5%;
+    inset-inline-start: 5%;
     animation-delay: 0s;
     background-color: var(--shape-color-1);
 }
@@ -2078,7 +2245,7 @@ body[data-ui-density="compact"] .settings-actions {
     width: 80px;
     height: 80px;
     top: 70%;
-    left: 15%;
+    inset-inline-start: 15%;
     animation-duration: 25s;
     background-color: var(--shape-color-2);
 }
@@ -2087,7 +2254,7 @@ body[data-ui-density="compact"] .settings-actions {
     width: 120px;
     height: 120px;
     top: 25%;
-    left: 80%;
+    inset-inline-start: 80%;
     background-color: var(--shape-color-1);
 }
 
@@ -2095,7 +2262,7 @@ body[data-ui-density="compact"] .settings-actions {
     width: 50px;
     height: 50px;
     top: 85%;
-    left: 60%;
+    inset-inline-start: 60%;
     animation-duration: 18s;
     background-color: var(--shape-color-2);
 }
@@ -2104,7 +2271,7 @@ body[data-ui-density="compact"] .settings-actions {
     width: 200px;
     height: 200px;
     top: 40%;
-    left: 40%;
+    inset-inline-start: 40%;
     opacity: 0.1;
     background-color: var(--shape-color-1);
 }
@@ -2114,7 +2281,7 @@ body[data-ui-density="compact"] .settings-actions {
     width: 100px;
     height: 100px;
     top: 55%;
-    left: 90%;
+    inset-inline-start: 90%;
     animation-delay: 2s;
     animation-duration: 22s;
     background-color: var(--shape-color-2);
@@ -2125,7 +2292,7 @@ body[data-ui-density="compact"] .settings-actions {
     width: 60px;
     height: 60px;
     top: 15%;
-    left: 30%;
+    inset-inline-start: 30%;
     animation-delay: 1s;
     background-color: var(--shape-color-1);
 }
@@ -2160,7 +2327,7 @@ body.modal-open {
 
 .modal {
     position: fixed;
-    left: 0;
+    inset-inline-start: 0;
     top: 0;
     width: 100%;
     height: 100%;
@@ -2199,8 +2366,8 @@ body.modal-open {
     content: '';
     position: absolute;
     top: 0;
-    left: 0;
-    right: 0;
+    inset-inline-start: 0;
+    inset-inline-end: 0;
     height: 3px;
     background: var(--primary-color);
     opacity: 0.8;
@@ -2209,7 +2376,7 @@ body.modal-open {
 .modal-close-btn {
     position: absolute;
     top: 0.8rem;
-    right: 1rem;
+    inset-inline-end: 1rem;
     color: var(--text-color);
     font-size: 1.8rem;
     font-weight: bold;
@@ -2550,7 +2717,7 @@ body.modal-open {
 
 .setting-item.checkbox-group input[type="checkbox"] {
     width: auto;
-    margin-right: 0;
+    margin-inline-end: 0;
     accent-color: var(--primary-color);
     transform: scale(1.2);
     cursor: pointer;
@@ -2568,8 +2735,8 @@ body.modal-open {
     width: auto;
     padding: 0.8rem 1.8rem;
     display: block;
-    margin-left: auto;
-    margin-right: auto;
+    margin-inline-start: auto;
+    margin-inline-end: auto;
 }
 
 .speed-input-group {
@@ -2626,7 +2793,7 @@ body.modal-open {
 
 .input-adornment-btn {
     position: absolute;
-    right: 8px;
+    inset-inline-end: 8px;
     top: 50%;
     transform: translateY(-50%);
     background: none;
@@ -2645,7 +2812,7 @@ body.modal-open {
 
 .input-field.with-paste-btn {
     width: 100%;
-    padding-right: 40px;
+    padding-inline-end: 40px;
 }
 
 /* Folder buttons unified with Save Settings button style */
@@ -2796,7 +2963,7 @@ body.modal-open {
     }
 
     .header-widget {
-        margin-right: 0.5rem;
+        margin-inline-end: 0.5rem;
         gap: 0.35rem;
     }
 
@@ -3084,7 +3251,7 @@ body.modal-open {
         flex: 1 1 0;
         min-width: 0;
         margin-bottom: 0;
-        margin-right: 0;
+        margin-inline-end: 0;
         overflow: hidden;
     }
 
@@ -3097,7 +3264,7 @@ body.modal-open {
         overflow: visible;
         min-width: 0;
         box-sizing: border-box;
-        margin-left: 0;
+        margin-inline-start: 0;
     }
 
     .filter-group {
@@ -3125,7 +3292,7 @@ body.modal-open {
     }
 
     .clear-search-btn {
-        right: 5px;
+        inset-inline-end: 5px;
         padding: 0.25rem;
         font-size: 0.75rem;
     }
@@ -3178,7 +3345,7 @@ body.modal-open {
     }
 
     .item-count-group {
-        margin-left: 0;
+        margin-inline-start: 0;
         width: 100%;
         text-align: center;
         flex-basis: 100%;
@@ -3245,7 +3412,7 @@ input[type="range"] {
 
 output {
     font-weight: 600;
-    margin-left: 0.5rem;
+    margin-inline-start: 0.5rem;
 }
 
 /* ===== HISTORY TAB ===== */
@@ -3259,7 +3426,7 @@ output {
     border-radius: 10px;
     font-size: 0.875rem;
     cursor: pointer;
-    margin-right: 0.5rem;
+    margin-inline-end: 0.5rem;
     transition: none;
     appearance: none;
     -webkit-appearance: none;
@@ -3507,7 +3674,7 @@ output {
 }
 
 .history-filters label {
-    margin-right: 0.25em;
+    margin-inline-end: 0.25em;
     font-weight: 600;
     color: var(--text-color);
     white-space: nowrap;
@@ -3542,7 +3709,7 @@ output {
 }
 
 .item-count {
-    margin-left: auto;
+    margin-inline-start: auto;
     font-weight: 600;
     color: var(--primary-color);
     background: var(--input-bg);
@@ -3606,7 +3773,7 @@ output {
 }
 
 .selected-count {
-    margin-left: auto;
+    margin-inline-start: auto;
     font-weight: 700;
     color: var(--primary-color);
     background: white;
@@ -3676,7 +3843,7 @@ output {
 }
 
 .history-item>div:not(.history-thumb):not(.history-actions) {
-    padding-left: 0.5rem;
+    padding-inline-start: 0.5rem;
     flex: 1;
     min-width: 0;
     overflow-wrap: anywhere;
@@ -3693,7 +3860,7 @@ output {
 }
 
 .history-item.bulk-mode {
-    padding-left: 3.5rem;
+    padding-inline-start: 3.5rem;
 }
 
 .history-item.selected {
@@ -3710,7 +3877,7 @@ output {
 .history-item-checkbox {
     position: absolute;
     top: 1rem;
-    left: 1rem;
+    inset-inline-start: 1rem;
     width: 20px;
     height: 20px;
     accent-color: var(--primary-color);
@@ -3724,7 +3891,7 @@ output {
     accent-color: var(--primary-color);
     cursor: pointer;
     z-index: 2;
-    margin-right: 12px;
+    margin-inline-end: 12px;
     flex-shrink: 0;
 }
 
@@ -3757,7 +3924,7 @@ output {
     white-space: nowrap;
     max-width: 100%;
     line-height: 1.3;
-    padding-right: 0.5rem;
+    padding-inline-end: 0.5rem;
 }
 
 .history-meta {
@@ -3765,16 +3932,16 @@ output {
     color: var(--text-color);
     opacity: 0.7;
     margin-bottom: 0.8rem;
-    padding-right: 0.5rem;
+    padding-inline-end: 0.5rem;
 }
 
 .history-actions {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    margin-left: auto;
+    margin-inline-start: auto;
     flex-shrink: 0;
-    padding-left: 0.5rem;
+    padding-inline-start: 0.5rem;
 }
 
 .history-action-btn {
@@ -3845,7 +4012,7 @@ output {
     }
 
     .item-count {
-        margin-left: 0;
+        margin-inline-start: 0;
         align-self: flex-start;
     }
 
@@ -3924,7 +4091,7 @@ output {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-right: 1rem;
+    margin-inline-end: 1rem;
     font-size: 0.9rem;
     flex: 0 0 auto;
     flex-shrink: 1;
@@ -3996,7 +4163,7 @@ output {
     gap: 0.4rem;
     box-shadow: none;
     text-decoration: none;
-    margin-left: 0.5rem;
+    margin-inline-start: 0.5rem;
 }
 
 .modern-folder-btn i {
@@ -4017,7 +4184,7 @@ output {
     }
 
     .header-widget {
-        margin-right: 0.75rem;
+        margin-inline-end: 0.75rem;
         gap: 0.4rem;
     }
 }
@@ -4029,7 +4196,7 @@ output {
     }
 
     .header-widget {
-        margin-right: 0.6rem;
+        margin-inline-end: 0.6rem;
     }
 }
 
@@ -4045,7 +4212,7 @@ output {
     }
 
     .header-widget {
-        margin-right: 0.5rem;
+        margin-inline-end: 0.5rem;
     }
 }
 
@@ -4127,7 +4294,7 @@ output {
 }
 
 .header .stat-item + .stat-item {
-    margin-left: 2px;
+    margin-inline-start: 2px;
 }
 
 .header .stat-item.is-active {
@@ -4271,8 +4438,8 @@ output {
     justify-content: center;
     text-align: center;
     width: 100%;
-    margin-left: auto;
-    margin-right: auto;
+    margin-inline-start: auto;
+    margin-inline-end: auto;
 }
 
 /* Center the three action buttons for the download folder in settings */
@@ -4343,7 +4510,7 @@ button {
 }
 
 .history-filters label {
-    margin-right: 0;
+    margin-inline-end: 0;
     font-weight: 600;
     color: var(--text-color);
     white-space: nowrap;
@@ -4360,8 +4527,8 @@ button {
 
 #importCookiesBtn {
     display: inline-flex;
-    margin-left: 0;
-    margin-right: 0;
+    margin-inline-start: 0;
+    margin-inline-end: 0;
     margin-bottom: 0;
     width: auto;
     max-width: none;
@@ -4468,7 +4635,7 @@ button {
     max-width: none;
     box-sizing: border-box;
     overflow: hidden;
-    margin-right: 0;
+    margin-inline-end: 0;
 }
 
 .search-input-wrapper {
@@ -4492,7 +4659,7 @@ button {
 
 .clear-search-btn {
     position: absolute;
-    right: 5px;
+    inset-inline-end: 5px;
     top: 50%;
     transform: translateY(-50%);
     background: none;
@@ -4518,7 +4685,7 @@ button {
     min-width: 0;
     width: auto;
     box-sizing: border-box;
-    margin-left: 0;
+    margin-inline-start: 0;
 }
 
 .filter-group {
@@ -4556,7 +4723,7 @@ button {
 }
 
 .item-count-group {
-    margin-left: 0;
+    margin-inline-start: 0;
 }
 
 .item-count {
@@ -5099,8 +5266,8 @@ button {
 }
 
 .bulk-actions-container .selected-count {
-    margin-left: auto;
-    margin-right: 0;
+    margin-inline-start: auto;
+    margin-inline-end: 0;
 }
 
 /* Sidebar Actions Container */
@@ -5230,7 +5397,7 @@ body {
 }
 
 .cookie-instructions ol {
-    margin-left: 1.5rem;
+    margin-inline-start: 1.5rem;
     line-height: 1.8;
 }
 
@@ -5449,7 +5616,7 @@ body {
 }
 
 .onboarding-step-title {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--font-text);
     font-size: 1.75rem;
     font-weight: 700;
     color: var(--text-color);
@@ -5486,7 +5653,7 @@ body {
     align-items: center;
     gap: 0.75rem;
     transition: all 0.2s ease;
-    text-align: left;
+    text-align: start;
 }
 
 .onboarding-feature-card:hover {
@@ -5528,7 +5695,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    text-align: left;
+    text-align: start;
 }
 
 .onboarding-form-group label {
@@ -5599,7 +5766,7 @@ body {
     font-weight: 900;
     position: absolute;
     top: 8px;
-    right: 8px;
+    inset-inline-end: 8px;
     color: var(--primary-color);
     font-size: 0.85rem;
 }
@@ -5653,7 +5820,7 @@ body {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    text-align: left;
+    text-align: start;
 }
 
 .onboarding-toggle-icon {
@@ -5704,8 +5871,8 @@ body {
     position: absolute;
     cursor: pointer;
     top: 0;
-    left: 0;
-    right: 0;
+    inset-inline-start: 0;
+    inset-inline-end: 0;
     bottom: 0;
     background-color: var(--border-color);
     transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -5717,7 +5884,7 @@ body {
     position: absolute;
     height: 18px;
     width: 18px;
-    left: 3px;
+    inset-inline-start: 3px;
     bottom: 3px;
     background-color: white;
     transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -5767,7 +5934,7 @@ body {
     padding: 1rem 1.5rem;
     width: 100%;
     max-width: 420px;
-    text-align: left;
+    text-align: start;
 }
 
 .onboarding-summary-item {
@@ -5795,7 +5962,7 @@ body {
 }
 
 .onboarding-summary-value {
-    margin-left: auto;
+    margin-inline-start: auto;
     font-weight: 600;
 }
 
@@ -5873,7 +6040,7 @@ body {
 .onboarding-close-btn {
     position: absolute;
     top: 1rem;
-    right: 1rem;
+    inset-inline-end: 1rem;
     background: none;
     border: none;
     font-size: 1.25rem;
@@ -5914,7 +6081,7 @@ body {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    text-align: left;
+    text-align: start;
     line-height: 1.5;
 }
 
@@ -6086,7 +6253,7 @@ body {
 
 #updateModal .update-close-btn {
     top: 0.65rem;
-    right: 0.65rem;
+    inset-inline-end: 0.65rem;
     opacity: 0.75;
 }
 
@@ -6137,7 +6304,7 @@ body {
     grid-template-rows: auto minmax(0, 1fr) auto;
     width: 100%;
     height: 100%;
-    font-family: 'Manrope', 'Segoe UI Variable Text', sans-serif;
+    font-family: var(--font-text);
     background:
         radial-gradient(circle at 100% 0%, rgba(237, 23, 54, 0.05), transparent 30%),
         linear-gradient(135deg, #fff 0%, #fff 70%, #fff8f9 100%);
@@ -6243,7 +6410,7 @@ body {
     max-width: 650px;
     margin: 0;
     color: var(--setup-ink);
-    font-family: 'Manrope', 'Segoe UI Variable Display', sans-serif;
+    font-family: var(--font-display);
     font-size: clamp(2.15rem, 4.5vw, 3.5rem);
     font-weight: 800;
     letter-spacing: -0.045em;
@@ -6291,12 +6458,12 @@ body {
 
 .setup-visual-orbit::before {
     top: 16%;
-    right: -16px;
+    inset-inline-end: -16px;
 }
 
 .setup-visual-orbit::after {
     bottom: 8%;
-    left: -10px;
+    inset-inline-start: -10px;
 }
 
 .setup-visual-core {
@@ -6427,7 +6594,7 @@ body {
     background: #fff;
     border: 1px solid #dde0e5;
     border-radius: 12px;
-    text-align: left;
+    text-align: start;
     transform: none;
     box-shadow: none;
 }
@@ -6571,7 +6738,7 @@ body {
     content: "";
     position: absolute;
     top: 3px;
-    left: 3px;
+    inset-inline-start: 3px;
     width: 16px;
     height: 16px;
     border-radius: 50%;
@@ -6619,7 +6786,7 @@ body {
     color: #272d38;
     font-weight: 650;
     overflow-wrap: anywhere;
-    text-align: right;
+    text-align: end;
 }
 
 .setup-footer {
@@ -6713,9 +6880,9 @@ body {
         width: 100%;
         height: 100dvh;
         max-height: 100dvh;
-        border-right: 0;
+        border-inline-end: 0;
         border-bottom: 0;
-        border-left: 0;
+        border-inline-start: 0;
         border-radius: 0;
     }
 
@@ -6876,8 +7043,8 @@ body {
     -webkit-backdrop-filter: none;
     border-top: 1px solid var(--border-color);
     position: fixed;
-    left: 0;
-    right: 0;
+    inset-inline-start: 0;
+    inset-inline-end: 0;
     bottom: 0;
     flex-shrink: 0;
     font-size: 0.8rem;
@@ -6936,7 +7103,7 @@ body {
     text-decoration: none;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: none;
-    margin-left: 0.5rem;
+    margin-inline-start: 0.5rem;
 }
 
 /* Keep the styled support link visually stable on hover. */
@@ -7113,7 +7280,7 @@ body {
     border-radius: 8px;
     padding: 1rem;
     margin: 1rem 0;
-    text-align: left;
+    text-align: start;
 }
 
 .first-run-box .checkbox-label {
@@ -7147,7 +7314,7 @@ body {
 }
 
 .failure-help-panel {
-    text-align: left;
+    text-align: start;
 }
 
 .failure-help-header,
@@ -7210,7 +7377,7 @@ body {
 
 .failure-help-steps {
     margin: 0.85rem 0 0;
-    padding-left: 1.1rem;
+    padding-inline-start: 1.1rem;
     display: grid;
     gap: 0.45rem;
 }
@@ -7231,7 +7398,7 @@ body {
 }
 
 .setup-health-banner {
-    text-align: left;
+    text-align: start;
 }
 
 .setup-health-badge-list {
@@ -7342,7 +7509,7 @@ body {
     border-radius: 8px;
     padding: 1rem;
     margin: 1rem 0;
-    text-align: left;
+    text-align: start;
 }
 
 .first-run-box .checkbox-label {
@@ -7637,7 +7804,7 @@ body {
 
 .playlist-selection-duration {
     position: absolute;
-    right: 4px;
+    inset-inline-end: 4px;
     bottom: 4px;
     padding: 1px 5px;
     border-radius: 4px;
@@ -8020,7 +8187,7 @@ button.history-action-btn[class]:active:not(:disabled),
 #settingsModal .settings-modal-header h2 {
     margin: 0;
     font-size: 1.15rem;
-    text-align: left;
+    text-align: start;
 }
 
 #settingsModal .settings-modal-header .modal-close-btn {
@@ -8054,7 +8221,7 @@ button.history-action-btn[class]:active:not(:disabled),
     gap: 2px;
     padding: 0.75rem;
     background: var(--st-muted-bg);
-    border-right: 1px solid var(--border-color);
+    border-inline-end: 1px solid var(--border-color);
 }
 
 #settingsModal .settings-nav-item {
@@ -8066,7 +8233,7 @@ button.history-action-btn[class]:active:not(:disabled),
     font: inherit;
     font-size: 0.85rem;
     font-weight: 600;
-    text-align: left;
+    text-align: start;
     color: var(--st-muted-text);
     background: transparent;
     border: 0;
@@ -8235,7 +8402,7 @@ button.history-action-btn[class]:active:not(:disabled),
     display: inline-block;
     width: 0.5rem;
     height: 0.5rem;
-    margin-right: 0.4rem;
+    margin-inline-end: 0.4rem;
     border-radius: 50%;
     background: var(--cookie-tone);
     vertical-align: 0.05em;
@@ -8279,7 +8446,7 @@ button.history-action-btn[class]:active:not(:disabled),
     content: '';
     position: absolute;
     top: 2px;
-    left: 2px;
+    inset-inline-start: 2px;
     width: 1rem;
     height: 1rem;
     background: #fff;
@@ -8314,7 +8481,7 @@ button.history-action-btn[class]:active:not(:disabled),
     min-width: 2.75rem;
     font-size: 0.8rem;
     font-weight: 700;
-    text-align: right;
+    text-align: end;
     font-variant-numeric: tabular-nums;
 }
 
@@ -8385,8 +8552,8 @@ button.history-action-btn[class]:active:not(:disabled),
 }
 
 #settingsModal .settings-help-trigger {
-    margin-left: -0.5rem;
-    margin-right: auto;
+    margin-inline-start: -0.5rem;
+    margin-inline-end: auto;
 }
 
 #settingsModal .setup-health-section {
@@ -8442,7 +8609,7 @@ button.history-action-btn[class]:active:not(:disabled),
     #settingsModal .settings-nav {
         flex-direction: row;
         overflow-x: auto;
-        border-right: 0;
+        border-inline-end: 0;
         border-bottom: 1px solid var(--border-color);
     }
 
@@ -8544,7 +8711,7 @@ button.history-action-btn[class]:active:not(:disabled),
 
 #historyPanel .history-summary-tertiary::before {
     content: "·";
-    margin-right: 0.5rem;
+    margin-inline-end: 0.5rem;
 }
 
 #historyPanel .sidebar-actions-container {
@@ -8591,7 +8758,7 @@ button.history-action-btn[class]:active:not(:disabled),
 #historyPanel .search-input-wrapper::before {
     content: "\f002";
     position: absolute;
-    left: 0.8rem;
+    inset-inline-start: 0.8rem;
     z-index: 1;
     font-family: "Font Awesome 7 Free", "Font Awesome 6 Free";
     font-weight: 900;
@@ -8618,7 +8785,7 @@ button.history-action-btn[class]:active:not(:disabled),
 }
 
 #historyPanel .clear-search-btn {
-    right: 0.4rem;
+    inset-inline-end: 0.4rem;
     width: 1.6rem;
     height: 1.6rem;
     padding: 0;
@@ -8864,13 +9031,13 @@ button.history-action-btn[class]:active:not(:disabled),
 
 /* Bulk mode */
 #historyPanel .history-item.bulk-mode {
-    padding-left: 0;
+    padding-inline-start: 0;
     cursor: pointer;
 }
 
 #historyPanel .history-item-checkbox {
     top: 0.6rem;
-    left: 0.6rem;
+    inset-inline-start: 0.6rem;
     width: 18px;
     height: 18px;
 }
@@ -9118,7 +9285,7 @@ button.history-action-btn[class]:active:not(:disabled),
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    text-align: left;
+    text-align: start;
 }
 
 .report-problem-modal .report-problem-eyebrow {
@@ -9132,7 +9299,7 @@ button.history-action-btn[class]:active:not(:disabled),
 
 .report-problem-modal h2 {
     margin: -0.5rem 0 0.25rem;
-    text-align: left;
+    text-align: start;
     font-size: 1.65rem;
     letter-spacing: -0.02em;
 }
@@ -9315,7 +9482,7 @@ button.history-action-btn[class]:active:not(:disabled),
 }
 
 #settingsModal .setting-row > :not(label):not(.setting-row-copy) {
-    margin-left: auto;
+    margin-inline-start: auto;
 }
 
 #settingsModal .speed-input-group {
@@ -9478,7 +9645,7 @@ button.history-action-btn[class]:active:not(:disabled),
     margin: 0;
     min-width: 0;
     color: var(--st-muted-text);
-    text-align: right;
+    text-align: end;
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
 }

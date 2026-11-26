@@ -1,6 +1,7 @@
 "use strict";
 
 const path = require("path");
+const { tr } = require("../utils/ui-message");
 
 function sanitizeFilename(title) {
   if (!title) {
@@ -85,7 +86,7 @@ function createDownloadCompletionService({
   }) {
     return {
       type: "complete",
-      message: message || "Download complete!",
+      message: message || tr("Download complete!"),
       itemId,
       title: title || itemData?.title || filename,
       source,

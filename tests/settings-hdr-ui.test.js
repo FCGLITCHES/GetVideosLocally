@@ -104,7 +104,8 @@ test("cookie_importer_uses_responsive_flat_red_and_white_flow", () => {
   assert.match(cookiesHtml, /--cookies-accent:\s*#d7192d/);
   assert.match(cookiesHtml, /class="upload-zone-content"/);
   assert.match(cookiesHtml, /class="cookie-note"/);
-  assert.equal((cookieMarkup.match(/<li><span>/g) || []).length, 8);
+  // Steps with inline markup carry a data-i18n-key on their span.
+  assert.equal((cookieMarkup.match(/<li><span[\s>]/g) || []).length, 8);
   assert.match(cookieMarkup, /Saving checks the file format/);
   assert.match(cookieMarkup, /id="youtubeCookieExportGuide"/);
   assert.match(cookieMarkup, /The text on the robots\.txt page is not the cookies file/);

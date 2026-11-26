@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Import Cookies - GetVideosLocally</title>
+    <script src="i18n/languages.js"></script>
+    <script src="i18n/i18n.js"></script>
     <link rel="stylesheet" href="../style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="icon" type="image/x-icon" href="Logo1.ico">
@@ -400,13 +402,13 @@
                     <div class="cookies-header-copy">
                         <h1>Import Cookies</h1>
                         <p>Upload or paste your cookies.txt file for content you have permission to access.</p>
-                        <p>Uploaded files are saved automatically to your local app profile. <strong>Use Save only for pasted or edited personal cookies.</strong></p>
+                        <p data-i18n-key="Uploaded files are saved automatically to your local app profile. &lt;strong&gt;Use Save only for pasted or edited personal cookies.&lt;/strong&gt;">Uploaded files are saved automatically to your local app profile. <strong>Use Save only for pasted or edited personal cookies.</strong></p>
                     </div>
                 </div>
 
                 <!-- Content -->
                 <div class="cookies-content">
-                    <p class="cookie-note" id="cookieSessionNotice"><strong>A saved file can still be rejected.</strong> Cookies from your account can expire or change when the website refreshes your browser session. Saving checks the file format; it does not confirm that the website will accept the session.</p>
+                    <p data-i18n-key="&lt;strong&gt;A saved file can still be rejected.&lt;/strong&gt; Cookies from your account can expire or change when the website refreshes your browser session. Saving checks the file format; it does not confirm that the website will accept the session." class="cookie-note" id="cookieSessionNotice"><strong>A saved file can still be rejected.</strong> Cookies from your account can expire or change when the website refreshes your browser session. Saving checks the file format; it does not confirm that the website will accept the session.</p>
                     <!-- Upload/Drop Zone -->
                     <div class="cookie-upload-zone" id="uploadZone">
                         <input type="file" id="fileInput" accept=".txt" />
@@ -446,22 +448,22 @@
                             How to get cookies:
                         </h2>
                         <ol>
-                            <li><span>Install a browser extension like <strong><a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener noreferrer">cookies.txt</a></strong> for Chrome/Firefox</span></li>
+                            <li><span data-i18n-key="Install a browser extension like &lt;strong&gt;&lt;a&gt;cookies.txt&lt;/a&gt;&lt;/strong&gt; for Chrome/Firefox">Install a browser extension like <strong><a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener noreferrer">cookies.txt</a></strong> for Chrome/Firefox</span></li>
                             <li><span>Go to the website where you have permission to access content</span></li>
-                            <li><span><strong>Click the extension</strong> and export cookies for the relevant domain</span></li>
-                            <li><span><strong>Upload the exported file</strong> here to save it automatically, or paste its contents and select <strong>Save Cookies</strong></span></li>
+                            <li><span data-i18n-key="&lt;strong&gt;Click the extension&lt;/strong&gt; and export cookies for the relevant domain"><strong>Click the extension</strong> and export cookies for the relevant domain</span></li>
+                            <li><span data-i18n-key="&lt;strong&gt;Upload the exported file&lt;/strong&gt; here to save it automatically, or paste its contents and select &lt;strong&gt;Save Cookies&lt;/strong&gt;"><strong>Upload the exported file</strong> here to save it automatically, or paste its contents and select <strong>Save Cookies</strong></span></li>
                         </ol>
                         <details id="youtubeCookieExportGuide">
                             <summary><strong>YouTube: export a session that stays usable</strong></summary>
                             <ol>
                                 <li><span>Open a private/incognito window and sign into YouTube. Allow your cookie-export extension in that window if needed.</span></li>
-                                <li><span>In that same tab, enter <strong>https://www.youtube.com/robots.txt</strong> in the address bar. Keep only this one private tab open.</span></li>
-                                <li><span>Use the extension to export <strong>youtube.com cookies</strong>. The text on the robots.txt page is not the cookies file.</span></li>
-                                <li><span><strong>Close the private window</strong> after exporting. Upload the exported .txt file here, then retry the download.</span></li>
+                                <li><span data-i18n-key="In that same tab, enter &lt;strong&gt;https://www.youtube.com/robots.txt&lt;/strong&gt; in the address bar. Keep only this one private tab open.">In that same tab, enter <strong>https://www.youtube.com/robots.txt</strong> in the address bar. Keep only this one private tab open.</span></li>
+                                <li><span data-i18n-key="Use the extension to export &lt;strong&gt;youtube.com cookies&lt;/strong&gt;. The text on the robots.txt page is not the cookies file.">Use the extension to export <strong>youtube.com cookies</strong>. The text on the robots.txt page is not the cookies file.</span></li>
+                                <li><span data-i18n-key="&lt;strong&gt;Close the private window&lt;/strong&gt; after exporting. Upload the exported .txt file here, then retry the download."><strong>Close the private window</strong> after exporting. Upload the exported .txt file here, then retry the download.</span></li>
                             </ol>
                             <p>Keeping the exported session open in the browser can cause YouTube to replace its cookies. A new export may be needed if the site still rejects the session.</p>
                         </details>
-                        <p class="cookie-note"><strong>Note:</strong> Only use this feature for content you have proper authorization and permission to access.</p>
+                        <p data-i18n-key="&lt;strong&gt;Note:&lt;/strong&gt; Only use this feature for content you have proper authorization and permission to access." class="cookie-note"><strong>Note:</strong> Only use this feature for content you have proper authorization and permission to access.</p>
                     </div>
 
                     <!-- Status Message -->
@@ -519,10 +521,10 @@
             }, 3000);
         }
 
-        function setSaveButtonState(isSaving, label = 'Save Cookies') {
+        function setSaveButtonState(isSaving, label = t('Save Cookies')) {
             saveCookiesBtn.disabled = isSaving;
             saveCookiesBtn.innerHTML = isSaving
-                ? '<i class="fas fa-spinner fa-spin"></i> <span>Saving...</span>'
+                ? '<i class="fas fa-spinner fa-spin"></i> <span>' + t('Saving...') + '</span>'
                 : `<i class="fas fa-save"></i> <span>${label}</span>`;
         }
 
@@ -534,19 +536,19 @@
 
         async function persistCookies(cookies, options = {}) {
             const {
-                successMessage = 'Cookies saved. Retry your download to check whether the site accepts this session.',
+                successMessage = t('Cookies saved. Retry your download to check whether the site accepts this session.'),
                 closeAfterSave = false,
                 clearFormAfterSave = false
             } = options;
 
             if (!window.electronAPI || !window.electronAPI.saveCookiesTxt) {
-                showStatus('Cookie saving requires Electron. Please use the desktop app.', 'error');
+                showStatus(t('Cookie saving requires Electron. Please use the desktop app.'), 'error');
                 return false;
             }
 
             const result = await window.electronAPI.saveCookiesTxt(cookies);
             if (!result.success) {
-                showStatus('Error saving cookies: ' + result.error, 'error');
+                showStatus(t('Error saving cookies: {error}', { error: result.error }), 'error');
                 return false;
             }
 
@@ -583,15 +585,15 @@
                 cookieInput.value = text;
                 setSaveButtonState(true);
                 const saved = await persistCookies(text.trim(), {
-                    successMessage: 'File imported. Retry your download to check whether the site accepts this session.'
+                    successMessage: t('File imported. Retry your download to check whether the site accepts this session.')
                 });
                 if (!saved) {
                     setSaveButtonState(false);
                     return;
                 }
-                setSaveButtonState(false, 'Saved');
+                setSaveButtonState(false, t('Saved'));
             } catch (error) {
-                showStatus('Error reading file: ' + error.message, 'error');
+                showStatus(t('Error reading file: {error}', { error: error.message }), 'error');
                 setSaveButtonState(false);
             }
         }
@@ -599,7 +601,7 @@
         // File upload handling
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
-            await handleUploadedFile(file, 'Please select a .txt file');
+            await handleUploadedFile(file, t('Please select a .txt file'));
         });
 
         // Drag and drop handling
@@ -618,7 +620,7 @@
             uploadZone.classList.remove('drag-over');
 
             const file = e.dataTransfer.files[0];
-            await handleUploadedFile(file, 'Please drop a .txt file');
+            await handleUploadedFile(file, t('Please drop a .txt file'));
         });
 
         // Save cookies
@@ -626,7 +628,7 @@
             const cookies = cookieInput.value.trim();
             
             if (!cookies) {
-                showStatus('Please upload or paste your cookies.', 'error');
+                showStatus(t('Please upload or paste your cookies.'), 'error');
                 return;
             }
 
@@ -634,7 +636,7 @@
 
             try {
                 const saved = await persistCookies(cookies, {
-                    successMessage: 'Cookies saved. Retry your download to check whether the site accepts this session.',
+                    successMessage: t('Cookies saved. Retry your download to check whether the site accepts this session.'),
                     clearFormAfterSave: true,
                     closeAfterSave: true
                 });
@@ -642,7 +644,7 @@
                     setSaveButtonState(false);
                 }
             } catch (error) {
-                showStatus('Error saving cookies: ' + error.message, 'error');
+                showStatus(t('Error saving cookies: {error}', { error: error.message }), 'error');
                 setSaveButtonState(false);
             }
         });
@@ -650,21 +652,21 @@
         // Clear cookies
         clearCookiesBtn.addEventListener('click', async () => {
             if (!cookieInput.value.trim()) {
-                showStatus('No cookies to clear.', 'error');
+                showStatus(t('No cookies to clear.'), 'error');
                 return;
             }
 
-            if (confirm('Are you sure you want to clear the cookies?')) {
+            if (confirm(t('Are you sure you want to clear the cookies?'))) {
                 try {
                     if (window.electronAPI && window.electronAPI.saveCookiesTxt) {
                         const cleared = await persistCookies('', {
-                            successMessage: 'Saved cookies cleared from disk.'
+                            successMessage: t('Saved cookies cleared from disk.')
                         });
                         if (!cleared) {
                             return;
                         }
                     } else {
-                        showStatus('Cookie clearing requires Electron. Please use the desktop app.', 'error');
+                        showStatus(t('Cookie clearing requires Electron. Please use the desktop app.'), 'error');
                         return;
                     }
 
@@ -672,7 +674,7 @@
                     fileInput.value = '';
                     setSaveButtonState(false);
                 } catch (error) {
-                    showStatus('Error clearing cookies: ' + error.message, 'error');
+                    showStatus(t('Error clearing cookies: {error}', { error: error.message }), 'error');
                 }
             }
         });

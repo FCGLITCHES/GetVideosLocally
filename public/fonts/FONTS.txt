@@ -1,0 +1,17 @@
+Fonts bundled with GetVideosLocally. All are licensed under the SIL Open Font
+License 1.1 (full text in manrope-OFL.txt, identical for every font below).
+
+manrope-*.woff2               Manrope            (c) The Manrope Project Authors
+dm-serif-display-*.woff2      DM Serif Display   (c) The DM Serif Project Authors
+noto-sans-arabic.woff2        Noto Sans Arabic   (c) Google LLC
+vazirmatn-arabic.woff2        Vazirmatn          (c) The Vazirmatn Project Authors
+noto-nastaliq-urdu.woff2      Noto Nastaliq Urdu (c) Google LLC
+heebo-hebrew.woff2            Heebo              (c) The Heebo Project Authors
+noto-sans-devanagari.woff2    Noto Sans Devanagari (c) Google LLC
+noto-sans-bengali.woff2       Noto Sans Bengali  (c) Google LLC
+noto-sans-tamil.woff2         Noto Sans Tamil    (c) Google LLC
+noto-sans-telugu.woff2        Noto Sans Telugu   (c) Google LLC
+noto-sans-thai-looped.woff2   Noto Sans Thai Looped (c) Google LLC
+
+Files are the per-script subsets published by Fontsource (fontsource.org).
+Chinese, Japanese and Korean use the system's UI fonts.

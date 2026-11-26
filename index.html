@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-app-version="3.2.12">
+<html lang="en" data-app-version="3.2.13">
 
 <head>
     <meta charset="UTF-8">
@@ -12,6 +12,8 @@
                    img-src 'self' data: https:;
                    connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*;">
     <title>GetVideosLocally - Multi-Site Video Downloader</title>
+    <script src="/public/i18n/languages.js"></script>
+    <script src="/public/i18n/i18n.js"></script>
     <link rel="stylesheet" href="./public/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="/style.css">
     <link rel="icon" type="image/x-icon" href="/favicon.ico?v=3.2.7">
@@ -415,6 +417,11 @@
                                 </select>
                             </div>
                             <div class="setting-item setting-row">
+                                <label for="languageSelect"><span class="setting-label">Language</span><span
+                                        class="setting-desc">Language for menus, buttons and messages</span></label>
+                                <select id="languageSelect" class="select-field"></select>
+                            </div>
+                            <div class="setting-item setting-row">
                                 <label for="uiScale"><span class="setting-label">Text size</span><span
                                         class="setting-desc">Scale the interface text</span></label>
                                 <div class="scale-input-group">
@@ -565,7 +572,7 @@
                             </div>
                             <p class="setting-item playback-tip">
                                 <i class="fas fa-lightbulb" aria-hidden="true"></i>
-                                <small>For best playback with Opus audio, we recommend
+                                <small data-i18n-key="For best playback with Opus audio, we recommend &lt;a&gt;Media Player Classic&lt;/a&gt;.">For best playback with Opus audio, we recommend
                                     <a href="https://mpc-hc.org/" target="_blank" rel="noopener noreferrer"
                                         class="tip-link-bold">Media Player Classic</a>.</small>
                             </p>
@@ -821,7 +828,7 @@
             <p class="support-modal-copy">
                 If the app saved you time, you can support future updates and maintenance with a coffee.
             </p>
-            <p class="support-modal-credit">
+            <p data-i18n-key="Built and maintained by &lt;a&gt;FCGLITCHES&lt;/a&gt;." class="support-modal-credit">
                 Built and maintained by
                 <a href="https://github.com/FCGLITCHES/simple-yt-downloader" target="_blank" rel="noopener noreferrer">
                     FCGLITCHES

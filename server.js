@@ -22,6 +22,12 @@ const globAsync = promisify(require("glob"));
 const { loadEnv } = require("./backend/config/env");
 const { isLocalOrigin, createLocalRequestGuard } = require("./backend/middleware/local-origin");
 const { assertMediaUrl } = require("./backend/utils/media-url");
+const {
+  tr,
+  uiMessage,
+  uiException,
+  classificationFields,
+} = require("./backend/utils/ui-message");
 const { createToolUpdateGate } = require("./backend/utils/tool-update-gate");
 const {
   collectDiagnostics,
@@ -394,7 +400,7 @@ const env = loadEnv(process.env);
           return {
             updated: false,
             currentVersion,
-            reason: "Update check skipped (checked recently)",
+            reason: tr("Update check skipped (checked recently)"),
           };
         }
       }
@@ -403,7 +409,7 @@ const env = loadEnv(process.env);
         return {
           updated: false,
           currentVersion,
-          reason: "yt-dlp is not bundled with the app; update it with your package manager",
+          reason: tr("yt-dlp is not bundled with the app; update it with your package manager"),
         };
       }
 
@@ -419,7 +425,7 @@ const env = loadEnv(process.env);
         return {
           updated: false,
           currentVersion,
-          reason: "Already up to date",
+          reason: tr("Already up to date"),
         };
       }
 
@@ -487,7 +493,7 @@ const env = loadEnv(process.env);
           return {
             updated: false,
             currentVersion,
-            reason: "Update check skipped (checked recently)",
+            reason: tr("Update check skipped (checked recently)"),
           };
         }
       }
@@ -536,7 +542,7 @@ const env = loadEnv(process.env);
             currentVersion,
             hasUpdate: true,
             latestVersion: ffmpegResult.latestVersion,
-            reason: `Auto-update failed: ${downloadResult.error}`,
+            ...uiMessage("Auto-update failed: {error}", { error: downloadResult.error }, "reason"),
           };
         }
       } else {
@@ -545,7 +551,7 @@ const env = loadEnv(process.env);
         return {
           updated: false,
           currentVersion,
-          reason: ffmpegResult.reason || "Already up to date",
+          reason: ffmpegResult.reason || tr("Already up to date"),
         };
       }
     } catch (error) {
@@ -940,6 +946,9 @@ const env = loadEnv(process.env);
       title: failedJob.title,
       source: failedJob.source,
       message: failedJob.message,
+      ...(failedJob.messageKey
+        ? { messageKey: failedJob.messageKey, messageVars: failedJob.messageVars }
+        : {}),
       failedAt: failedJob.failedAt,
       attempt: failedJob.attempt || 0,
       siteKey: failedJob.siteKey || getSiteKeyFromUrl(failedJob.videoUrl),
@@ -990,7 +999,7 @@ const env = loadEnv(process.env);
   async function queueFailedDownloadRetry(clientId, itemId) {
     const failedJob = failedDownloads.get(itemId);
     if (!failedJob || String(failedJob.clientId) !== String(clientId)) {
-      throw new Error("Failed download not found.");
+      throw new Error(tr("Failed download not found."));
     }
 
     const newItemId = await handleDownloadRequest(clientId, {
@@ -1004,7 +1013,7 @@ const env = loadEnv(process.env);
       playlistAction: "single",
     });
     if (!newItemId) {
-      throw new Error("The download could not be queued. The failed item is still available.");
+      throw new Error(tr("The download could not be queued. The failed item is still available."));
     }
     failedDownloads.delete(itemId);
     await downloadState.saveRuntimeState();
@@ -1047,7 +1056,7 @@ const env = loadEnv(process.env);
   function queueScheduledTimer(scheduleId, scheduledFor) {
     const scheduledTimeMs = new Date(scheduledFor).getTime();
     if (!Number.isFinite(scheduledTimeMs)) {
-      throw new Error("Invalid scheduled time.");
+      throw new Error(tr("Invalid scheduled time."));
     }
 
     const delayMs = Math.min(2147483647, Math.max(0, scheduledTimeMs - Date.now()));
@@ -1076,7 +1085,7 @@ const env = loadEnv(process.env);
     const scheduledFor = requestData.scheduledFor;
     const scheduledTime = new Date(scheduledFor).getTime();
     if (!scheduledFor || !Number.isFinite(scheduledTime) || scheduledTime <= Date.now()) {
-      throw new Error("Scheduled time must be in the future.");
+      throw new Error(tr("Scheduled time must be in the future."));
     }
 
     const scheduleId = `schedule_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -1115,7 +1124,7 @@ const env = loadEnv(process.env);
   async function deleteScheduledDownload(clientId, scheduleId) {
     const scheduledJob = scheduledDownloads.get(scheduleId);
     if (!scheduledJob || String(scheduledJob.clientId) !== String(clientId)) {
-      throw new Error("Scheduled download not found.");
+      throw new Error(tr("Scheduled download not found."));
     }
 
     const timer = scheduledDownloadTimers.get(scheduleId);
@@ -1176,7 +1185,7 @@ const env = loadEnv(process.env);
     }
     const owner = savedJob.clientId || savedJob.itemData?.clientId;
     if (String(owner) !== String(clientId)) {
-      throw new Error("Download item not found.");
+      throw new Error(tr("Download item not found."));
     }
     if (failedDownloads.has(itemId)) {
       failedDownloads.delete(itemId);
@@ -1618,17 +1627,17 @@ const env = loadEnv(process.env);
     if (!videoUrl) {
       return sendMessageToClient(clientId, {
         type: "error",
-        message: "Missing video URL.",
+        message: tr("Missing video URL."),
       });
     }
 
     try {
       assertMediaUrl(videoUrl, true);
       if (!["mp3", "wav", "m4a", "opus", "flac", "mp4", "mkv", "mov", "webm"].includes(format)) {
-        throw new TypeError("Select a supported download format.");
+        throw new TypeError(tr("Select a supported download format."));
       }
       if (settings.downloadFolder !== undefined && typeof settings.downloadFolder !== "string") {
-        throw new TypeError("Download folder must be a path.");
+        throw new TypeError(tr("Download folder must be a path."));
       }
     } catch (error) {
       sendMessageToClient(clientId, { type: "error", message: error.message });
@@ -1640,8 +1649,8 @@ const env = loadEnv(process.env);
     if (blocked.blocked) {
       const reason =
         blocked.reason === "pornography"
-          ? "Pornography sites are not allowed."
-          : "Gambling sites are not allowed.";
+          ? tr("Pornography sites are not allowed.")
+          : tr("Gambling sites are not allowed.");
       return sendMessageToClient(clientId, { type: "error", message: reason });
     }
 
@@ -1652,7 +1661,7 @@ const env = loadEnv(process.env);
     ) {
       return sendMessageToClient(clientId, {
         type: "error",
-        message: "Server not ready. Please try again shortly.",
+        message: tr("Server not ready. Please try again shortly."),
       });
     }
 
@@ -1690,7 +1699,7 @@ const env = loadEnv(process.env);
       sendMessageToClient(clientId, {
         type: "queued",
         itemId: playlistMetaId,
-        title: `Fetching playlist: ${videoUrl}`,
+        ...uiMessage("Fetching playlist: {url}", { url: videoUrl }, "title"),
         source,
       });
 
@@ -1709,7 +1718,7 @@ const env = loadEnv(process.env);
               )
             : fetchedItems;
         if (filteredItems.length === 0) {
-          throw new Error("No playlist items were selected for download.");
+          throw new Error(tr("No playlist items were selected for download."));
         }
         if (siteKey === "youtube") {
           const cookiePreflight = await preflightYouTubeBurstCookies(
@@ -1732,7 +1741,9 @@ const env = loadEnv(process.env);
         sendMessageToClient(clientId, {
           type: "status",
           itemId: playlistMetaId,
-          message: `Found ${filteredItems.length} items in playlist. Queuing downloads...`,
+          ...uiMessage("Found {count} items in playlist. Queuing downloads...", {
+            count: filteredItems.length,
+          }),
           source,
         });
 
@@ -1831,6 +1842,7 @@ const env = loadEnv(process.env);
             type: "queued",
             itemId: individualItemId,
             title: itemData.title,
+            ...(item.title ? {} : uiMessage("Video {number}", { number: index + 1 }, "title")),
             source,
             format: format,
             quality: quality,
@@ -1896,7 +1908,7 @@ const env = loadEnv(process.env);
             ) {
               sendMessageToClient(clientId, {
                 type: "cancel_confirm",
-                message: "Skipped due to cancellation.",
+                message: tr("Skipped due to cancellation."),
                 itemId: individualItemId,
                 source,
               });
@@ -1911,7 +1923,7 @@ const env = loadEnv(process.env);
         if (!downloadQueue.get(playlistMetaId)?.cancelled) {
           sendMessageToClient(clientId, {
             type: "playlist_complete",
-            message: "All playlist items processed.",
+            message: tr("All playlist items processed."),
             itemId: playlistMetaId,
             source,
           });
@@ -1921,7 +1933,7 @@ const env = loadEnv(process.env);
         if (!downloadQueue.get(playlistMetaId)?.cancelled) {
           sendMessageToClient(clientId, {
             type: "error",
-            message: `Playlist processing error: ${error.message}`,
+            ...uiMessage("Playlist processing error: {error}", { error: error.message }),
             itemId: playlistMetaId,
             source,
           });
@@ -1953,6 +1965,9 @@ const env = loadEnv(process.env);
         type: "queued",
         itemId: itemId,
         title: itemData.title,
+        ...(itemData.title === `Video: ${videoUrl}`
+          ? uiMessage("Video: {url}", { url: videoUrl }, "title")
+          : {}),
         source,
         format: itemData.format || format,
         quality: quality,
@@ -2040,7 +2055,7 @@ const env = loadEnv(process.env);
         if (!downloadQueue.has(itemId) || downloadQueue.get(itemId)?.cancelled) {
           sendMessageToClient(clientId, {
             type: "cancel_confirm",
-            message: "Download cancelled before start.",
+            message: tr("Download cancelled before start."),
             itemId: itemId,
             source,
           });
@@ -2080,11 +2095,11 @@ const env = loadEnv(process.env);
   async function handleCancelRequest(clientId, itemId) {
     const job = downloadQueue.get(itemId) || pausedDownloads.get(itemId) || activeProcesses.get(itemId);
     if (job && String(job.clientId || job.itemData?.clientId) !== String(clientId)) {
-      throw new Error("Download item not found.");
+      throw new Error(tr("Download item not found."));
     }
     sendMessageToClient(clientId, {
       type: "status",
-      message: "Cancellation request received...",
+      message: tr("Cancellation request received..."),
       itemId,
     });
 
@@ -2108,7 +2123,7 @@ const env = loadEnv(process.env);
       await downloadState.saveRuntimeState();
       sendMessageToClient(clientId, {
         type: "cancel_confirm",
-        message: "Download cancelled from queue.",
+        message: tr("Download cancelled from queue."),
         itemId,
       });
       return;
@@ -2125,7 +2140,7 @@ const env = loadEnv(process.env);
       await downloadState.saveRuntimeState();
       sendMessageToClient(clientId, {
         type: "cancel_confirm",
-        message: "Paused download cancelled and removed.",
+        message: tr("Paused download cancelled and removed."),
         itemId,
       });
       return;
@@ -2187,13 +2202,13 @@ const env = loadEnv(process.env);
       await downloadState.saveRuntimeState();
       sendMessageToClient(clientId, {
         type: "cancel_confirm",
-        message: "Download cancelled and files cleaned up.",
+        message: tr("Download cancelled and files cleaned up."),
         itemId,
       });
     } else {
       sendMessageToClient(clientId, {
         type: "error",
-        message: "Item not found or already completed/cancelled.",
+        message: tr("Item not found or already completed/cancelled."),
         itemId,
       });
     }
@@ -2302,7 +2317,7 @@ const env = loadEnv(process.env);
     const processInfo = activeProcesses.get(itemId);
     const queuedItem = downloadQueue.get(itemId);
     const owner = processInfo?.itemData?.clientId || processInfo?.clientId || queuedItem?.clientId || pausedDownloads.get(itemId)?.clientId;
-    if (owner && String(owner) !== String(clientId)) throw new Error("Download item not found.");
+    if (owner && String(owner) !== String(clientId)) throw new Error(tr("Download item not found."));
 
     // Build the job spec to save for resume
     let jobSpec = null;
@@ -2378,7 +2393,7 @@ const env = loadEnv(process.env);
 
       sendMessageToClient(clientId, {
         type: "pause_confirm",
-        message: "Download paused",
+        message: tr("Download paused"),
         itemId,
         source: jobSpec.source,
       });
@@ -2417,7 +2432,7 @@ const env = loadEnv(process.env);
 
       sendMessageToClient(clientId, {
         type: "pause_confirm",
-        message: "Queued download paused.",
+        message: tr("Queued download paused."),
         itemId,
         source: jobSpec.source,
       });
@@ -2428,13 +2443,13 @@ const env = loadEnv(process.env);
       if (pausedDownloads.has(itemId)) {
         sendMessageToClient(clientId, {
           type: "status",
-          message: "This download is already paused.",
+          message: tr("This download is already paused."),
           itemId,
         });
       } else {
         sendMessageToClient(clientId, {
           type: "error",
-          message: "Item not found or already completed.",
+          message: tr("Item not found or already completed."),
           itemId,
         });
       }
@@ -2447,11 +2462,11 @@ const env = loadEnv(process.env);
     logger.info(`[${itemId}] ▶️ Resume request received`);
 
     const jobSpec = pausedDownloads.get(itemId);
-    if (jobSpec && String(jobSpec.clientId) !== String(clientId)) throw new Error("Download item not found.");
+    if (jobSpec && String(jobSpec.clientId) !== String(clientId)) throw new Error(tr("Download item not found."));
     if (!jobSpec) {
       sendMessageToClient(clientId, {
         type: "error",
-        message: "No paused download found for this item.",
+        message: tr("No paused download found for this item."),
         itemId,
       });
       return;
@@ -2487,7 +2502,7 @@ const env = loadEnv(process.env);
 
     sendMessageToClient(clientId, {
       type: "status",
-      message: `Resuming download... (attempt ${jobSpec.resumeAttempts})`,
+      ...uiMessage("Resuming download... (attempt {attempt})", { attempt: jobSpec.resumeAttempts }),
       itemId,
       source: jobSpec.source,
     });
@@ -2868,7 +2883,7 @@ const env = loadEnv(process.env);
 
       sendMessageToClient(clientId, {
         type: "status",
-        message: "Starting optimized download...",
+        message: tr("Starting optimized download..."),
         itemId,
         source,
       });
@@ -3090,13 +3105,17 @@ const env = loadEnv(process.env);
           );
         }
 
-        const qualityText =
-          quality === "highest"
-            ? `highest available quality (${containerFormat.toUpperCase()})`
-            : `${quality}p with highest bitrate (${containerFormat.toUpperCase()})`;
+        const containerLabel = containerFormat.toUpperCase();
         sendMessageToClient(clientId, {
           type: "status",
-          message: `Downloading in ${qualityText}...`,
+          ...(quality === "highest"
+            ? uiMessage("Downloading in highest available quality ({container})...", {
+                container: containerLabel,
+              })
+            : uiMessage("Downloading in {quality}p with highest bitrate ({container})...", {
+                quality,
+                container: containerLabel,
+              })),
           itemId,
           source,
         });
@@ -3165,8 +3184,11 @@ const env = loadEnv(process.env);
             );
           }
 
-          throw new Error(
-            `Download failed: yt-dlp completed but output file was not created. Expected: ${path.basename(finalOutputFilename)}. Check format selector compatibility with this video.`,
+          throw uiException(
+            uiMessage(
+              "Download failed: yt-dlp completed but output file was not created. Expected: {file}. Check format selector compatibility with this video.",
+              { file: path.basename(finalOutputFilename) },
+            ),
           );
         }
 
@@ -3174,7 +3196,7 @@ const env = loadEnv(process.env);
           `[${itemId}] ✅ Download successful: ${finalFilePathValue}`,
         );
       } else {
-        throw new Error(`Unsupported format: ${format}`);
+        throw uiException(uiMessage("Unsupported format: {format}", { format }));
       }
 
       if (itemProcInfo.cancelled) {
@@ -3190,8 +3212,10 @@ const env = loadEnv(process.env);
       });
 
       if (!finalFilePathValue || !fs.existsSync(finalFilePathValue)) {
-        throw new Error(
-          "Processing failed, final file not found at: " + finalFilePathValue,
+        throw uiException(
+          uiMessage("Processing failed, final file not found at: {path}", {
+            path: finalFilePathValue,
+          }),
         );
       }
 
@@ -3215,7 +3239,7 @@ const env = loadEnv(process.env);
           itemData,
           itemProcInfo,
           title: currentVideoTitle || actualFinalFilenameDisplay,
-          message: "Download complete!",
+          message: tr("Download complete!"),
         });
 
         await downloadCompletionService.sendAndRecord(clientId, payload);
@@ -3248,6 +3272,8 @@ const env = loadEnv(process.env);
           classifyRuntimeError({
             hasCookies: errorMsg.toLowerCase().includes("cookie"),
             message: errorMsg,
+            messageKey: error.messageKey,
+            messageVars: error.messageVars,
             siteKey,
           });
 
@@ -3275,10 +3301,24 @@ const env = loadEnv(process.env);
           downloadQueue.set(itemId, nextRetryItemData);
           sendMessageToClient(clientId, {
             type: "status",
-            message:
-              classification.category === "rate_limit"
-                ? `Retrying in ${Math.ceil(delayMs / 1000)}s with rate-limit safe pacing (attempt ${retryAttempt + 1}/${Number(settings.smartRetryAttempts || 3)}).`
-                : `Retrying in ${Math.ceil(delayMs / 1000)}s due to a temporary ${siteKey} issue (attempt ${retryAttempt + 1}/${Number(settings.smartRetryAttempts || 3)}).`,
+            ...(classification.category === "rate_limit"
+              ? uiMessage(
+                  "Retrying in {seconds}s with rate-limit safe pacing (attempt {attempt}/{max}).",
+                  {
+                    seconds: Math.ceil(delayMs / 1000),
+                    attempt: retryAttempt + 1,
+                    max: Number(settings.smartRetryAttempts || 3),
+                  },
+                )
+              : uiMessage(
+                  "Retrying in {seconds}s due to a temporary {site} issue (attempt {attempt}/{max}).",
+                  {
+                    seconds: Math.ceil(delayMs / 1000),
+                    site: siteKey,
+                    attempt: retryAttempt + 1,
+                    max: Number(settings.smartRetryAttempts || 3),
+                  },
+                )),
             itemId,
             source,
           });
@@ -3307,7 +3347,7 @@ const env = loadEnv(process.env);
           source,
           title: currentVideoTitle,
           thumbnail: itemProcInfo.thumbnail || itemData.thumbnail || null,
-          message: classification.userMessage || errorMsg,
+          ...classificationFields(classification, { message: errorMsg }),
           failedAt: new Date().toISOString(),
           attempt: retryAttempt,
           siteKey,
@@ -3319,7 +3359,10 @@ const env = loadEnv(process.env);
 
         sendMessageToClient(clientId, {
           type: "error",
-          message: classification.userMessage || `Failed: ${error.message}`,
+          ...classificationFields(
+            classification,
+            uiMessage("Failed: {error}", { error: error.message }),
+          ),
           itemId,
           source,
         });
@@ -3337,7 +3380,7 @@ const env = loadEnv(process.env);
         );
         sendMessageToClient(clientId, {
           type: "cancel_confirm",
-          message: "Processing stopped due to cancellation.",
+          message: tr("Processing stopped due to cancellation."),
           itemId,
           source,
         });
@@ -3569,7 +3612,7 @@ const env = loadEnv(process.env);
         // Just send status update
         sendMessageToClient(clientId, {
           type: "status",
-          message: `Resuming: ${currentVideoTitle}`,
+          ...uiMessage("Resuming: {title}", { title: currentVideoTitle }),
           itemId,
           source,
         });
@@ -3645,7 +3688,7 @@ const env = loadEnv(process.env);
 
       sendMessageToClient(clientId, {
         type: "status",
-        message: "Resuming download...",
+        message: tr("Resuming download..."),
         itemId,
         source,
       });
@@ -3771,7 +3814,7 @@ const env = loadEnv(process.env);
             itemData,
             itemProcInfo,
             title: currentVideoTitle,
-            message: "Download complete!",
+            message: tr("Download complete!"),
           });
           await downloadCompletionService.sendAndRecord(clientId, payload);
           usageTelemetry.recordDownloadFinished({
@@ -3797,15 +3840,20 @@ const env = loadEnv(process.env);
       const classification = error.classification || classifyRuntimeError({
         hasCookies: error.message?.toLowerCase().includes("cookie"),
         message: error.message,
+        messageKey: error.messageKey,
+        messageVars: error.messageVars,
         siteKey: itemData.siteKey || getSiteKeyFromUrl(videoUrl),
       });
-      const message = classification.userMessage || error.message || "Resume failed";
+      const messageFields = classificationFields(
+        classification,
+        error.message ? { message: error.message } : { message: tr("Resume failed") },
+      );
       await storeFailedDownload(itemId, {
         ...itemData, clientId, title: currentVideoTitle,
         thumbnail: itemProcInfo.thumbnail || itemData.thumbnail || null,
-        message, failedAt: new Date().toISOString(), playlistAction: "single",
+        ...messageFields, failedAt: new Date().toISOString(), playlistAction: "single",
       });
-      sendMessageToClient(clientId, { type: "error", message, itemId, source });
+      sendMessageToClient(clientId, { type: "error", ...messageFields, itemId, source });
       usageTelemetry.recordDownloadFinished({
         result: "failed",
         url: videoUrl,
@@ -3881,11 +3929,11 @@ const env = loadEnv(process.env);
           sendMessageToClient(clientId, {
             type: "status",
             itemId,
-            message: backoff.openedCircuit
-              ? "YouTube protection opened a short cooldown to avoid further rate limiting."
-              : `YouTube rate limiting detected. Retrying in ${Math.ceil(
-                  backoff.retryDelayMs / 1000,
-                )}s...`,
+            ...(backoff.openedCircuit
+              ? { message: tr("YouTube protection opened a short cooldown to avoid further rate limiting.") }
+              : uiMessage("YouTube rate limiting detected. Retrying in {seconds}s...", {
+                  seconds: Math.ceil(backoff.retryDelayMs / 1000),
+                })),
           });
         }
       }
@@ -3906,7 +3954,7 @@ const env = loadEnv(process.env);
       sendMessageToClient(clientId, {
         type: "status",
         itemId,
-        message: "YouTube refused the direct stream. Retrying with the HLS stream...",
+        message: tr("YouTube refused the direct stream. Retrying with the HLS stream..."),
       });
       try {
         const result = await runSingleYtDlpCommand(
@@ -3996,7 +4044,7 @@ const env = loadEnv(process.env);
             cookieArgs.push("--extractor-retries", "3");
             sendMessageToClient(clientId, {
               type: "status",
-              message: "🍪 Using cookies (optimized mode)",
+              message: tr("🍪 Using cookies (optimized mode)"),
               itemId,
             });
           }
@@ -4007,8 +4055,9 @@ const env = loadEnv(process.env);
           if (!isInfoOnly) {
             sendMessageToClient(clientId, {
               type: "status",
-              message:
+              message: tr(
                 "⚠️ Cookies found but invalid format. Using standard access...",
+              ),
               itemId,
             });
           }
@@ -4018,7 +4067,7 @@ const env = loadEnv(process.env);
         if (!isInfoOnly) {
           sendMessageToClient(clientId, {
             type: "status",
-            message: `❌ Cookie error: ${e.message}`,
+            ...uiMessage("❌ Cookie error: {error}", { error: e.message }),
             itemId,
           });
         }
@@ -4029,7 +4078,7 @@ const env = loadEnv(process.env);
       );
       sendMessageToClient(clientId, {
         type: "status",
-        message: "ℹ️ No cookies found - add cookies for enhanced access",
+        message: tr("ℹ️ No cookies found - add cookies for enhanced access"),
         itemId,
       });
     }
@@ -4498,8 +4547,9 @@ const env = loadEnv(process.env);
           if (!isInfoOnly && !/unable to download video data/i.test(data)) {
             sendMessageToClient(clientId, {
               type: "status",
-              message:
+              message: tr(
                 "⚠️ Authentication issue detected. Consider updating cookies.",
+              ),
               itemId,
             });
           }
@@ -4516,8 +4566,9 @@ const env = loadEnv(process.env);
           if (!isInfoOnly) {
             sendMessageToClient(clientId, {
               type: "status",
-              message:
+              message: tr(
                 "⚠️ Rate limiting detected. Adjusting download strategy...",
+              ),
               itemId,
             });
           }
@@ -4712,25 +4763,42 @@ const env = loadEnv(process.env);
               .split("\n")
               .filter((line) => line.toLowerCase().includes("error:"))
               .join("; ") ||
-            stderrData.trim() ||
-            `yt-dlp exited with code ${code}`;
+            stderrData.trim();
+          // Translatable form of errorMsg for the window, when it is our own sentence.
+          let errorText = null;
+          if (!errorMsg) {
+            errorText = uiMessage("yt-dlp exited with code {code}", { code });
+            errorMsg = errorText.message;
+          }
 
           if (/unable to download video data: HTTP Error 403/i.test(errorMsg)) {
             // Extraction already succeeded, so the cookies were accepted.
             errorMsg = `The media stream was refused by the site (HTTP 403). Original error: ${errorMsg}`;
           } else if (errorMsg.includes("403") || errorMsg.includes("Forbidden")) {
-            errorMsg = cookieFilePath
-              ? `Authentication failed despite cookies. Your cookies may be expired or invalid. Original error: ${errorMsg}`
-              : `Authentication required (403 Forbidden). Try importing cookies. Original error: ${errorMsg}`;
+            errorText = cookieFilePath
+              ? uiMessage(
+                  "Authentication failed despite cookies. Your cookies may be expired or invalid. Original error: {error}",
+                  { error: errorMsg },
+                )
+              : uiMessage(
+                  "Authentication required (403 Forbidden). Try importing cookies. Original error: {error}",
+                  { error: errorMsg },
+                );
+            errorMsg = errorText.message;
           } else if (
             errorMsg.includes("429") ||
             errorMsg.includes("Too Many Requests") ||
             errorMsg.includes("rate limit") ||
             rateLimitDetected
           ) {
-            errorMsg = `Rate limiting detected (429). Please wait a few minutes before trying again. Error: ${errorMsg}`;
+            errorText = uiMessage(
+              "Rate limiting detected (429). Please wait a few minutes before trying again. Error: {error}",
+              { error: errorMsg },
+            );
+            errorMsg = errorText.message;
           } else if (errorMsg.includes("Did not get any data blocks")) {
-            errorMsg = `There was a network error. Please check your internet connection and try again.`;
+            errorText = null;
+            errorMsg = tr("There was a network error. Please check your internet connection and try again.");
           }
 
           logger.error(
@@ -4741,6 +4809,9 @@ const env = loadEnv(process.env);
               code: undefined,
               hasCookies: cookieArgs.includes("--cookies"),
               message: errorMsg.substring(0, 400),
+              ...(errorText && errorText.message.length <= 400
+                ? { messageKey: errorText.messageKey, messageVars: errorText.messageVars }
+                : {}),
               stderr: stderrData,
               siteKey,
             }),
@@ -4807,7 +4878,7 @@ const env = loadEnv(process.env);
 
       sendMessageToClient(clientId, {
         type: "status",
-        message: "Starting conversion...",
+        message: tr("Starting conversion..."),
         itemId,
       });
       const ffmpegProc = spawn(ffmpegExecutable, ffmpegArgs, {
@@ -4848,7 +4919,7 @@ const env = loadEnv(process.env);
         if (code === 0) {
           sendMessageToClient(clientId, {
             type: "status",
-            message: "Conversion complete.",
+            message: tr("Conversion complete."),
             itemId,
           });
           resolve();
@@ -5006,7 +5077,7 @@ const env = loadEnv(process.env);
         logger.info(`Using ffmpeg executable: ${ffmpegExecutable}`);
       }
 
-      wsHub.broadcast({ type: "ready", message: "Backend server is ready." });
+      wsHub.broadcast({ type: "ready", message: tr("Backend server is ready.") });
     }, 500);
   });
 
@@ -5044,7 +5115,7 @@ const env = loadEnv(process.env);
       if (clientEntry) {
         sendMessageToClient(clientEntry[0], {
           type: "status",
-          message: "Server is shutting down...",
+          message: tr("Server is shutting down..."),
         });
       }
       clientWs.terminate();

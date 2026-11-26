@@ -6,8 +6,10 @@
 
 Behind the scenes, the app now keeps a backup copy of your settings.
 
-## Download
+## Which file should I download?
 
-This is the last update you need to install by hand. From now on, the installed app updates itself. The portable version tells you when a new one is out.
+- **Most people: `GetVideosLocally.Setup.3.2.12.exe`.** Open it to install the app. It then keeps itself up to date.
+- **`GetVideosLocally-Portable-3.2.12.zip`** is for computers where you can't install apps, such as a work or school PC, or to run it from a USB stick. Unzip it and open `GetVideosLocally.exe`. It tells you when an update is out, but you download it yourself.
+- You can ignore the other files. The app uses them to update.
 
-Your downloads, history and settings are kept when you upgrade.
+Already have the app? This is the last update you need to install by hand. Your downloads, history and settings are kept.

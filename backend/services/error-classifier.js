@@ -1,5 +1,7 @@
 "use strict";
 
+const { tr } = require("../utils/ui-message");
+
 const ERROR_CATEGORIES = Object.freeze({
   auth: "auth",
   cookies: "cookies",
@@ -35,8 +37,14 @@ function includesAny(message, patterns) {
   return patterns.some((pattern) => message.includes(pattern));
 }
 
+// messageKey/messageVars: the English source and {placeholder} values of
+// `message` (see utils/ui-message). When no rule matches and the message itself
+// is shown, they travel on as userMessageKey/userMessageVars so the window can
+// translate it.
 function classifyRuntimeError({
   message,
+  messageKey,
+  messageVars,
   stderr,
   code,
   hasCookies = false,
@@ -53,7 +61,7 @@ function classifyRuntimeError({
     shouldBackoff: false,
     shouldOpenCircuit: false,
     userMessage:
-      normalizedMessage || "The request failed for an unknown reason.",
+      normalizedMessage || tr("The request failed for an unknown reason."),
   };
 
   if (!combined) {
@@ -73,7 +81,7 @@ function classifyRuntimeError({
       code: ERROR_CODES.circuitOpen,
       retryable: false,
       userMessage:
-        "YouTube rate-limit protection is active. Wait for the cooldown before retrying.",
+        tr("YouTube rate-limit protection is active. Wait for the cooldown before retrying."),
     };
   }
 
@@ -91,7 +99,7 @@ function classifyRuntimeError({
       code: ERROR_CODES.cookieInvalid,
       retryable: false,
       userMessage:
-        "The imported cookies file is invalid. Re-import a fresh cookies.txt file.",
+        tr("The imported cookies file is invalid. Re-import a fresh cookies.txt file."),
     };
   }
 
@@ -109,7 +117,7 @@ function classifyRuntimeError({
       code: ERROR_CODES.streamForbidden,
       retryable: true,
       userMessage:
-        "YouTube refused the media stream (HTTP 403). This is YouTube's stream protection, not your cookies. Retry later or update yt-dlp in Settings.",
+        tr("YouTube refused the media stream (HTTP 403). This is YouTube's stream protection, not your cookies. Retry later or update yt-dlp in Settings."),
     };
   }
 
@@ -132,8 +140,8 @@ function classifyRuntimeError({
       code: hasCookies ? ERROR_CODES.cookieExpired : ERROR_CODES.authRequired,
       retryable: false,
       userMessage: hasCookies
-        ? "The saved cookie session was rejected. It may have expired or changed in your browser. Export fresh cookies and retry."
-        : "This media requires login. Import cookies before retrying.",
+        ? tr("The saved cookie session was rejected. It may have expired or changed in your browser. Export fresh cookies and retry.")
+        : tr("This media requires login. Import cookies before retrying."),
     };
   }
 
@@ -155,7 +163,7 @@ function classifyRuntimeError({
       shouldBackoff: siteKey === "youtube",
       shouldOpenCircuit: siteKey === "youtube",
       userMessage:
-        "Rate limiting was detected. The backend will slow down and retry conservatively.",
+        tr("Rate limiting was detected. The backend will slow down and retry conservatively."),
     };
   }
 
@@ -177,7 +185,7 @@ function classifyRuntimeError({
       code: ERROR_CODES.network,
       retryable: true,
       userMessage:
-        "A network error interrupted the request. Check connectivity and retry.",
+        tr("A network error interrupted the request. Check connectivity and retry."),
     };
   }
 
@@ -197,7 +205,7 @@ function classifyRuntimeError({
       code: ERROR_CODES.toolReplaced,
       retryable: true,
       userMessage:
-        "yt-dlp was updated while this download was running. Retrying with the updated version.",
+        tr("yt-dlp was updated while this download was running. Retrying with the updated version."),
     };
   }
 
@@ -217,7 +225,7 @@ function classifyRuntimeError({
       code: ERROR_CODES.tooling,
       retryable: false,
       userMessage:
-        "The yt-dlp or FFmpeg toolchain failed. Update tools and retry.",
+        tr("The yt-dlp or FFmpeg toolchain failed. Update tools and retry."),
     };
   }
 
@@ -228,7 +236,7 @@ function classifyRuntimeError({
       code: ERROR_CODES.downloadMissing,
       retryable: true,
       userMessage:
-        "yt-dlp reported success, but the final file was not created.",
+        tr("yt-dlp reported success, but the final file was not created."),
     };
   }
 
@@ -239,7 +247,7 @@ function classifyRuntimeError({
       code: ERROR_CODES.downloadEmpty,
       retryable: true,
       userMessage:
-        "The output file was created but is empty. The download is not valid.",
+        tr("The output file was created but is empty. The download is not valid."),
     };
   }
 
@@ -256,15 +264,24 @@ function classifyRuntimeError({
       code: ERROR_CODES.stateCorrupt,
       retryable: false,
       userMessage:
-        "Saved backend state is corrupt or incompatible. Reset the stored state before retrying.",
+        tr("Saved backend state is corrupt or incompatible. Reset the stored state before retrying."),
     };
   }
 
+  if (normalizedMessage && messageKey) {
+    return {
+      ...baseResult,
+      userMessageKey: messageKey,
+      ...(messageVars ? { userMessageVars: messageVars } : {}),
+    };
+  }
   return baseResult;
 }
 
 function createClassifiedError({
   message,
+  messageKey,
+  messageVars,
   stderr,
   code,
   hasCookies = false,
@@ -272,6 +289,8 @@ function createClassifiedError({
 } = {}) {
   const classification = classifyRuntimeError({
     message,
+    messageKey,
+    messageVars,
     stderr,
     code,
     hasCookies,

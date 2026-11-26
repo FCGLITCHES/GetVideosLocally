@@ -1,5 +1,7 @@
 "use strict";
 
+const { tr } = require("../utils/ui-message");
+
 const {
   detectSiteKeyFromUrl,
   getSiteDownloadProfile,
@@ -82,7 +84,7 @@ function createSiteRequestGuard({
       shouldBackoff: false,
       shouldOpenCircuit: false,
       userMessage:
-        "YouTube rate-limit protection is active. Wait for the cooldown before retrying.",
+        tr("YouTube rate-limit protection is active. Wait for the cooldown before retrying."),
     };
     return error;
   }
